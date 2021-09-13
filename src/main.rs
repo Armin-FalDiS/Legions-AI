@@ -1,6 +1,6 @@
 use std::{
     io::{stdin, stdout, Write},
-    panic,
+    mem, panic,
 };
 
 macro_rules! flush {
@@ -16,8 +16,7 @@ macro_rules! input {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Unit {
-    //Empty, // placeholder
+pub enum Unit {
     Warden,
     Siren,
     Keeper,
@@ -69,11 +68,119 @@ impl Card {
         }
     }
 
-    fn placement() {}
+    // placement event that needs to be run after card is placed on the board (first time)
+    fn placement(
+        board: &mut [[Option<Card>; 5]; 4],
+        position: (usize, usize),
+        bombs: &mut [[u8; 5]; 4],
+    ) {
+        let y = position.0;
+        let x = position.1;
 
-    fn attack() {}
+        match board[y][x].as_ref().unwrap().name {
+            // Saboteur places bombs on empty neighbours
+            Unit::Saboteur => {
+                // top neighbour
+                if y > 0 && board[y - 1][x].is_none() {
+                    bombs[y - 1][x] += 1;
+                }
+                // bottom neighbour
+                else if y < 3 && board[y + 1][x].is_none() {
+                    bombs[y + 1][x] += 1;
+                }
+                // left neighbour
+                else if x > 0 && board[y][x - 1].is_none() {
+                    bombs[y][x - 1] += 1;
+                }
+                // right neighbour
+                else if x < 4 && board[y][x + 1].is_none() {
+                    bombs[y][x + 1] += 1;
+                }
+            }
+            // Siren pulls cards
+            Unit::Siren => {
+                // top card
+                for i in (0..y).rev() {
+                    // if the neighbour is not free then no pulling
+                    if i == y || (i == y - 1 && board[i][x].is_some()) {
+                        break;
+                    }
+                    if board[i][x].is_some() {
+                        board[y - 1][x] = board[i][x].take();
+                    }
+                }
+                // bottom card
+                for i in (y + 1)..4 {
+                    // if the neighbour is not free then no pulling
+                    if i == y || (i == y + 1 && board[i][x].is_some()) {
+                        break;
+                    }
+                    if board[i][x].is_some() {
+                        board[y + 1][x] = board[i][x].take();
+                    }
+                }
+                // left card
+                for i in (0..x).rev() {
+                    // if the neighbour is not free then no pulling
+                    if i == x || (i == x - 1 && board[y][i].is_some()) {
+                        break;
+                    }
+                    if board[y][i].is_some() {
+                        board[y][x - 1] = board[y][i].take();
+                    }
+                }
+                // right card
+                for i in (x + 1)..5 {
+                    // if the neighbour is not free then no pulling
+                    if i == x || (i == x + 1 && board[y][i].is_some()) {
+                        break;
+                    }
+                    if board[y][i].is_some() {
+                        board[y][x + 1] = board[y][i].take();
+                    }
+                }
+            }
+            // Titan flips adjacent cards
+            Unit::Titan => {
+                // top neighbour
+                if y > 0 && board[y - 1][x].is_some() {
+                    let card = board[y - 1][x].as_mut().unwrap();
+                    let t = card.top;
+                    card.top = card.bottom;
+                    card.bottom = t;
+                }
+                // bottom neighbour
+                else if y < 3 && board[y + 1][x].is_some() {
+                    let card = board[y + 1][x].as_mut().unwrap();
+                    let t = card.top;
+                    card.top = card.bottom;
+                    card.bottom = t;
+                }
+                // left neighbour
+                else if x > 0 && board[y][x - 1].is_some() {
+                    let card = board[y][x - 1].as_mut().unwrap();
+                    let l = card.left;
+                    card.left = card.right;
+                    card.right = l;
+                }
+                // right neighbour
+                else if x < 4 && board[y][x + 1].is_some() {
+                    let card = board[y][x + 1].as_mut().unwrap();
+                    let l = card.left;
+                    card.left = card.right;
+                    card.right = l;
+                }
+            }
+            // Others do nothing at this stage
+            _ => {}
+        }
+    }
 
-    fn endturn() {}
+    // check for bombs
+    fn bomb_check(&mut self, position: (usize, usize)) {}
+
+    // plays the card which is already placed on the board
+    fn play(&mut self, board: &mut [[Option<Card>; 5]; 4], position: (usize, usize)) {}
 }
 
 fn main() {
@@ -135,6 +242,9 @@ fn main() {
     // init Empty board (height 4, width 5)
     let mut board: [[Option<Card>; 5]; 4] = Default::default();
 
+    // array holding bombs
+    let mut bombs: [[u8; 5]; 4] = [[0; 5]; 4];
+
     // keep track of turns
     let mut turn: u8 = 0;
 
@@ -164,15 +274,19 @@ fn main() {
         if player_move == "ai" || player_move == "0" {
             ai(&mut board, &mut deck1, &mut deck2, current_turn);
         }
-        // apply player move on the board
+        // player should move so apply player move on the board
         else {
-            // if we can't place card, prompt for move again
+            // determine player's card and move
+            let player_move = parse_player_move(player_move);
+            // if we can't place the card, prompt for move again
             if !place_card(
                 &mut board,
                 &mut deck1,
                 &mut deck2,
-                player_move,
+                player_move.0,
+                (player_move.1, player_move.2),
                 current_turn,
+                &mut bombs
             ) {
                 continue;
             }
@@ -195,7 +309,7 @@ fn show_board(board: &[[Option<Card>; 5]; 4]) {
                     print!("{:?}({})", card.name, card.player);
                 }
             }
-            print!("\t\t\t\t");
+            print!("\t\t\t");
             flush!();
         }
         println!();
@@ -205,9 +319,12 @@ fn show_board(board: &[[Option<Card>; 5]; 4]) {
 
 // outputs player deck
 fn show_deck(deck: &Vec<Card>, player: u8) {
-    print!("Player#{} Deck: ", player);
+    print!("Player#{} Deck:  ", player);
     for c in deck.iter() {
-        print!("{:?}({}{}{}{})\t\t", c.name, c.top, c.right, c.bottom, c.left);
+        print!(
+            "{:?}({}{}{}{})        ",
+            c.name, c.top, c.right, c.bottom, c.left
+        );
         flush!();
     }
     println!();
@@ -218,9 +335,39 @@ fn place_card(
     board: &mut [[Option<Card>; 5]; 4],
     deck1: &mut Vec<Card>,
     deck2: &mut Vec<Card>,
-    player_move: &str,
+    card: usize,
+    mov: (usize, usize),
     player: u8,
+    bombs: &mut [[u8; 5]; 4]
 ) -> bool {
+    // determine the cell on the board
+    let cell = &mut board[mov.0][mov.1];
+
+    // replace cell placeholder card if move is legal
+    match cell {
+        Some(_c) => {
+            println!("That move is not possible !");
+            return false;
+        }
+        None => {
+            // player 1 plays
+            if player == 1 {
+                *cell = Some(deck1.remove(card));
+            }
+            // player 2 plays
+            else {
+                *cell = Some(deck2.remove(card));
+            }
+            // trigger card placement event
+            Card::placement(board, (mov.0, mov.1), bombs);
+
+            return true;
+        }
+    }
+}
+
+// parses single digit entered input to (card_index, y, x)
+fn parse_player_move(player_move: &str) -> (usize, usize, usize) {
     let mut cm = player_move.split(' ');
     // determine card
     let c = cm.next();
@@ -248,27 +395,7 @@ fn place_card(
         }
     }
 
-    // determine the cell on the board
-    let cell = &mut board[mov / 4][mov % 5];
-
-    // replace cell placeholder card if move is legal
-    match cell {
-        Some(_c) => {
-            println!("That move is not possible !");
-            return false;
-        }
-        None => {
-            // player 1 plays
-            if player == 1 {
-                *cell = Some(deck1.remove(card));
-            }
-            // player 2 plays
-            else {
-                *cell = Some(deck2.remove(card));
-            }
-            return true;
-        }
-    }
+    return (card, mov / 5, mov % 5);
 }
 
 // plays the best move on the board for current player
