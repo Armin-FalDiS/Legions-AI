@@ -1,6 +1,7 @@
 use std::{
+    cmp::{max, min},
     io::{stdin, stdout, Write},
-    mem, panic,
+    panic,
 };
 
 macro_rules! flush {
@@ -40,7 +41,6 @@ impl Card {
     // maps unit type to card values array
     fn get_values(unit: Unit) -> [u8; 4] {
         match unit {
-            //Unit::Empty => [0, 0, 0, 0],
             Unit::Warden => [6, 6, 4, 4],
             Unit::Siren => [7, 4, 4, 5],
             Unit::Keeper => [9, 5, 1, 5],
@@ -106,7 +106,12 @@ impl Card {
                         break;
                     }
                     if board[i][x].is_some() {
+                        // relocate card to neighbour cell
                         board[y - 1][x] = board[i][x].take();
+                        // check for bomb on that card
+                        Card::bomb_check(board, (y - 1, x), bombs);
+                        // pulls only once
+                        break;
                     }
                 }
                 // bottom card
@@ -116,7 +121,12 @@ impl Card {
                         break;
                     }
                     if board[i][x].is_some() {
+                        // relocate card to neighbour cell
                         board[y + 1][x] = board[i][x].take();
+                        // check for bomb on that card
+                        Card::bomb_check(board, (y + 1, x), bombs);
+                        // pulls only once
+                        break;
                     }
                 }
                 // left card
@@ -126,7 +136,12 @@ impl Card {
                         break;
                     }
                     if board[y][i].is_some() {
+                        // relocate card to neighbour cell
                         board[y][x - 1] = board[y][i].take();
+                        // check for bomb on that card
+                        Card::bomb_check(board, (y, x - 1), bombs);
+                        // pulls only once
+                        break;
                     }
                 }
                 // right card
@@ -136,7 +151,12 @@ impl Card {
                         break;
                     }
                     if board[y][i].is_some() {
+                        // relocate card to neighbour cell
                         board[y][x + 1] = board[y][i].take();
+                        // check for bomb on that card
+                        Card::bomb_check(board, (y, x + 1), bombs);
+                        // pulls only once
+                        break;
                     }
                 }
             }
@@ -174,10 +194,33 @@ impl Card {
             // Others do nothing at this stage
             _ => {}
         }
+
+        // after card is placed, check for bombs
+        Card::bomb_check(board, position, bombs);
     }
 
     // check for bombs
-    fn bomb_check(&mut self, position: (usize, usize)) {}
+    fn bomb_check(
+        board: &mut [[Option<Card>; 5]; 4],
+        position: (usize, usize),
+        bombs: &mut [[u8; 5]; 4],
+    ) {
+        let cell = &mut bombs[position.0][position.1];
+        // check if there is a bomb
+        if *cell > 0 {
+            match &mut board[position.0][position.1] {
+                Some(card) => {
+                    // bomb detonates reducing every stat down to a minimum of 1
+                    card.top = max(1, card.top - *cell);
+                    card.right = max(1, card.right - *cell);
+                    card.bottom = max(1, card.bottom - *cell);
+                    card.left = max(1, card.left - *cell);
+                    *cell = 0;
+                }
+                None => {}
+            }
+        }
+    }
 
     // plays the card which is already placed on the board
     fn play(&mut self, board: &mut [[Option<Card>; 5]; 4], position: (usize, usize)) {}
@@ -286,7 +329,7 @@ fn main() {
                 player_move.0,
                 (player_move.1, player_move.2),
                 current_turn,
-                &mut bombs
+                &mut bombs,
             ) {
                 continue;
             }
@@ -338,7 +381,7 @@ fn place_card(
     card: usize,
     mov: (usize, usize),
     player: u8,
-    bombs: &mut [[u8; 5]; 4]
+    bombs: &mut [[u8; 5]; 4],
 ) -> bool {
     // determine the cell on the board
     let cell = &mut board[mov.0][mov.1];
