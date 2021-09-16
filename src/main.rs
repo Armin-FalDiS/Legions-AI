@@ -1,5 +1,5 @@
 use std::{
-    cmp::{max, min},
+    cmp::{max, min, PartialEq},
     io::{stdin, stdout, Write},
     panic,
 };
@@ -16,7 +16,7 @@ macro_rules! input {
     };
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Unit {
     Warden,
     Siren,
@@ -38,6 +38,34 @@ struct Card {
 }
 
 impl Card {
+    // Returns a copy of the card
+    // fn copy(card: &Card) -> Card {
+    //     return Card {
+    //         name: card.name,
+    //         top: card.top,
+    //         right: card.right,
+    //         bottom: card.bottom,
+    //         left: card.left,
+    //         player: card.player,
+    //     };
+    // }
+
+    // increases every stat by n up to a maximum of 10
+    fn upgrade(&mut self, n: u8) {
+        self.top = min(10, self.top + n);
+        self.right = min(10, self.right + n);
+        self.bottom = min(10, self.bottom + n);
+        self.left = min(10, self.left + n);
+    }
+
+    // decreases every stat by n down to a minimum of 1
+    fn downgrade(&mut self, n: u8) {
+        self.top = max(1, self.top - n);
+        self.right = max(1, self.right - n);
+        self.bottom = max(1, self.bottom - n);
+        self.left = max(1, self.left - n);
+    }
+
     // maps unit type to card values array
     fn get_values(unit: Unit) -> [u8; 4] {
         match unit {
@@ -68,7 +96,7 @@ impl Card {
         }
     }
 
-    // placement event that needs to be run after card is placed on the board (first time)
+    // placement event that needs to be run after card is placed on the board for the first time
     fn placement(
         board: &mut [[Option<Card>; 5]; 4],
         position: (usize, usize),
@@ -199,7 +227,7 @@ impl Card {
         Card::bomb_check(board, position, bombs);
     }
 
-    // check for bombs
+    // checks for bombs and applies effects accordingly
     fn bomb_check(
         board: &mut [[Option<Card>; 5]; 4],
         position: (usize, usize),
@@ -210,11 +238,9 @@ impl Card {
         if *cell > 0 {
             match &mut board[position.0][position.1] {
                 Some(card) => {
-                    // bomb detonates reducing every stat down to a minimum of 1
-                    card.top = max(1, card.top - *cell);
-                    card.right = max(1, card.right - *cell);
-                    card.bottom = max(1, card.bottom - *cell);
-                    card.left = max(1, card.left - *cell);
+                    // bombs detonate reducing every stat down to a minimum of 1
+                    card.downgrade(*cell);
+                    // all bombs are detonated
                     *cell = 0;
                 }
                 None => {}
@@ -223,7 +249,139 @@ impl Card {
     }
 
     // plays the card which is already placed on the board
-    fn play(&mut self, board: &mut [[Option<Card>; 5]; 4], position: (usize, usize)) {}
+    fn play(board: &mut [[Option<Card>; 5]; 4], position: (usize, usize)) {
+        // if the attacker has won returns true otherwise false
+        fn battle(
+            attacker: Unit,
+            defender: Unit,
+            mut attack_value: u8,
+            mut defense_value: u8,
+        ) -> bool {
+            // Warden has a defense bonus
+            if defender == Unit::Warden {
+                defense_value += 1;
+            }
+
+            // slayer uses swapped attack values
+            if attacker == Unit::Slayer {
+                let t = defense_value;
+                defense_value = attack_value;
+                attack_value = t;
+            }
+
+            // do the battle
+            if attack_value > defense_value {
+                // attacker wins
+                return true;
+            } else {
+                // attacker hos lost the battle
+                return false;
+            }
+        }
+
+        // captured event for the defender
+        fn capture_defender(defender: &mut Card, attacking_player: u8) {
+            // change owner of the captured card
+            defender.player = attacking_player;
+            // Ravager upgrades values when captured
+            if defender.name == Unit::Ravager {
+                defender.upgrade(1);
+            }
+        }
+
+        // capturing event for the attacker
+        fn capture_attacker(attacker: &mut Card) {
+            if attacker.name == Unit::Ravager {
+                attacker.upgrade(1);
+            }
+        }
+
+        // determine attacker position
+        let y = position.0;
+        let x = position.1;
+
+        let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
+
+        // handle the battle with top neighbour
+        if y > 0 && board[y - 1][x].is_some() {
+            // do the battle and save the result in capture
+            let capture: bool = {
+                // fetch attacker
+                let a = board[y][x].as_ref().unwrap();
+                // fetch defender
+                let d = board[y - 1][x].as_ref().unwrap();
+                // commence battle
+                battle(a.name, d.name, a.top, d.bottom)
+            };
+
+            // if the attacker has won the battle then capture the card
+            if capture {
+                capture_defender(board[y - 1][x].as_mut().unwrap(), attacking_player);
+                // trigger capture event for the attacker
+                capture_attacker(board[y][x].as_mut().unwrap());
+            }
+        }
+
+        // handle the battle with right neighbour
+        if x < 4 && board[y][x + 1].is_some() {
+            // do the battle and save the result in capture
+            let capture: bool = {
+                // fetch attacker
+                let a = board[y][x].as_ref().unwrap();
+                // fetch defender
+                let d = board[y][x + 1].as_ref().unwrap();
+                // commence battle
+                battle(a.name, d.name, a.top, d.bottom)
+            };
+
+            // if the attacker has won the battle then capture the card
+            if capture {
+                capture_defender(board[y][x + 1].as_mut().unwrap(), attacking_player);
+                // trigger capture event for the attacker
+                capture_attacker(board[y][x].as_mut().unwrap());
+            }
+        }
+
+        // handle the battle with the bottom neighbour
+        if y < 3 && board[y + 1][x].is_some() {
+            // do the battle and save the result in capture
+            let capture: bool = {
+                // fetch attacker
+                let a = board[y][x].as_ref().unwrap();
+                // fetch defender
+                let d = board[y + 1][x].as_ref().unwrap();
+                // commence battle
+                battle(a.name, d.name, a.top, d.bottom)
+            };
+
+            // if the attacker has won the battle then capture the card
+            if capture {
+                capture_defender(board[y + 1][x].as_mut().unwrap(), attacking_player);
+                // trigger capture event for the attacker
+                capture_attacker(board[y][x].as_mut().unwrap());
+            }
+        }
+
+        // handle the battle with the left neighbour
+        if x > 0 && board[y][x - 1].is_some() {
+            // do the battle and save the result in capture
+            let capture: bool = {
+                // fetch attacker
+                let a = board[y][x].as_ref().unwrap();
+                // fetch defender
+                let d = board[y][x - 1].as_ref().unwrap();
+                // commence battle
+                battle(a.name, d.name, a.top, d.bottom)
+            };
+
+            // if the attacker has won the battle then capture the card
+            if capture {
+                capture_defender(board[y][x - 1].as_mut().unwrap(), attacking_player);
+                // trigger capture event for the attacker
+                capture_attacker(board[y][x].as_mut().unwrap());
+            }
+        }
+    }
 }
 
 fn main() {
@@ -295,6 +453,11 @@ fn main() {
     loop {
         // show board
         show_board(&board);
+
+        // if there are no more cards, end the game!
+        if deck1.len() + deck2.len() == 0 {
+            break;
+        }
 
         // show player1 deck
         show_deck(&deck1, 1);
@@ -388,10 +551,12 @@ fn place_card(
 
     // replace cell placeholder card if move is legal
     match cell {
+        // there is already a card in that cell
         Some(_c) => {
             println!("That move is not possible !");
             return false;
         }
+        // cell is free to place a card
         None => {
             // player 1 plays
             if player == 1 {
@@ -401,8 +566,10 @@ fn place_card(
             else {
                 *cell = Some(deck2.remove(card));
             }
-            // trigger card placement event
-            Card::placement(board, (mov.0, mov.1), bombs);
+
+            Card::placement(board, mov, bombs);
+
+            Card::play(board, mov);
 
             return true;
         }
