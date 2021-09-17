@@ -249,7 +249,14 @@ impl Card {
     }
 
     // plays the card which is already placed on the board
-    fn play(board: &mut [[Option<Card>; 5]; 4], position: (usize, usize)) {
+    fn play(board: &mut [[Option<Card>; 5]; 4], position: (usize, usize), same: bool) {
+        println!(
+            " ~~~ Play with {:?} @ {}:{} with same = {}",
+            board[position.0][position.1].as_ref().unwrap().name,
+            position.0,
+            position.1,
+            same
+        );
         // if the attacker has won returns true otherwise false
         fn battle(
             attacker: Unit,
@@ -268,6 +275,11 @@ impl Card {
                 defense_value = attack_value;
                 attack_value = t;
             }
+
+            println!(
+                " ~~~ Battle between {:?} & {:?} with {} vs {} repectively",
+                attacker, defender, attack_value, defense_value
+            );
 
             // do the battle
             if attack_value > defense_value {
@@ -300,6 +312,102 @@ impl Card {
         let y = position.0;
         let x = position.1;
 
+        // check for same rule
+        let mut top_same: bool = false;
+        let mut right_same: bool = false;
+        let mut bottom_same: bool = false;
+        let mut left_same: bool = false;
+
+        // if we are not in a same chain effect, check for sames
+        if !same {
+            // extract neighbouring values
+            let top = {
+                if y == 0 {
+                    0
+                } else {
+                    let t = board[y - 1][x].as_ref();
+                    if t.is_some() {
+                        t.unwrap().bottom
+                    } else {
+                        0
+                    }
+                }
+            };
+            let right = {
+                if x == 4 {
+                    0
+                } else {
+                    let r = board[y][x + 1].as_ref();
+                    if r.is_some() {
+                        r.unwrap().left
+                    } else {
+                        0
+                    }
+                }
+            };
+            let bottom = {
+                if y == 3 {
+                    0
+                } else {
+                    let b = board[y + 1][x].as_ref();
+                    if b.is_some() {
+                        b.unwrap().top
+                    } else {
+                        0
+                    }
+                }
+            };
+            let left = {
+                if x == 0 {
+                    0
+                } else {
+                    let l = board[y][x - 1].as_ref();
+                    if l.is_some() {
+                        l.unwrap().right
+                    } else {
+                        0
+                    }
+                }
+            };
+
+            // get the attacking card
+            let me = board[y][x].as_ref().unwrap();
+
+            // keep same count
+            let mut same_count: u8 = 0;
+
+            // check for same and raise flags accordingly
+            if top != 0 && top == me.top {
+                top_same = true;
+                same_count += 1;
+            }
+            if right != 0 && right == me.right {
+                right_same = true;
+                same_count += 1;
+            }
+            if bottom != 0 && bottom == me.bottom {
+                bottom_same = true;
+                same_count += 1;
+            }
+            if left != 0 && left == me.left {
+                left_same = true;
+                same_count += 1;
+            }
+
+            println!(
+                " ~~~ There were {} sames as such: t= {}, r= {}, b= {}, l= {}",
+                same_count, top_same, right_same, bottom_same, left_same
+            );
+
+            // if there are less than 2 sames, then same effect is canceled
+            if same_count < 2 {
+                top_same = false;
+                right_same = false;
+                bottom_same = false;
+                left_same = false;
+            }
+        }
+
         let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
 
         // handle the battle with top neighbour
@@ -310,8 +418,20 @@ impl Card {
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
                 let d = board[y - 1][x].as_ref().unwrap();
-                // commence battle
-                battle(a.name, d.name, a.top, d.bottom)
+                // if attacking player owns this card, there is no battle
+                if d.player == attacking_player {
+                    false
+                } else {
+                    // if same effect is present, no battle is needed
+                    if top_same {
+                        true
+                    }
+                    // otherwise let them fight normally as usual
+                    else {
+                        // commence battle
+                        battle(a.name, d.name, a.top, d.bottom)
+                    }
+                }
             };
 
             // if the attacker has won the battle then capture the card
@@ -319,6 +439,9 @@ impl Card {
                 capture_defender(board[y - 1][x].as_mut().unwrap(), attacking_player);
                 // trigger capture event for the attacker
                 capture_attacker(board[y][x].as_mut().unwrap());
+                if top_same || same {
+                    Card::play(board, (y - 1, x), true);
+                }
             }
         }
 
@@ -330,8 +453,20 @@ impl Card {
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
                 let d = board[y][x + 1].as_ref().unwrap();
-                // commence battle
-                battle(a.name, d.name, a.top, d.bottom)
+                // if attacking player owns this card, there is no battle
+                if d.player == attacking_player {
+                    false
+                } else {
+                    // if same effect is present, no battle is needed
+                    if right_same {
+                        true
+                    }
+                    // otherwise let them fight normally as usual
+                    else {
+                        // commence battle
+                        battle(a.name, d.name, a.right, d.left)
+                    }
+                }
             };
 
             // if the attacker has won the battle then capture the card
@@ -339,6 +474,9 @@ impl Card {
                 capture_defender(board[y][x + 1].as_mut().unwrap(), attacking_player);
                 // trigger capture event for the attacker
                 capture_attacker(board[y][x].as_mut().unwrap());
+                if right_same || same {
+                    Card::play(board, (y, x + 1), true);
+                }
             }
         }
 
@@ -350,8 +488,20 @@ impl Card {
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
                 let d = board[y + 1][x].as_ref().unwrap();
-                // commence battle
-                battle(a.name, d.name, a.top, d.bottom)
+                // if attacking player owns this card, there is no battle
+                if d.player == attacking_player {
+                    false
+                } else {
+                    // if same effect is present, no battle is needed
+                    if bottom_same {
+                        true
+                    }
+                    // otherwise let them fight normally as usual
+                    else {
+                        // commence battle
+                        battle(a.name, d.name, a.bottom, d.top)
+                    }
+                }
             };
 
             // if the attacker has won the battle then capture the card
@@ -359,6 +509,9 @@ impl Card {
                 capture_defender(board[y + 1][x].as_mut().unwrap(), attacking_player);
                 // trigger capture event for the attacker
                 capture_attacker(board[y][x].as_mut().unwrap());
+                if bottom_same || same {
+                    Card::play(board, (y + 1, x), true);
+                }
             }
         }
 
@@ -370,8 +523,20 @@ impl Card {
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
                 let d = board[y][x - 1].as_ref().unwrap();
-                // commence battle
-                battle(a.name, d.name, a.top, d.bottom)
+                // if attacking player owns this card, there is no battle
+                if d.player == attacking_player {
+                    false
+                } else {
+                    // if same effect is present, no battle is needed
+                    if left_same {
+                        true
+                    }
+                    // otherwise let them fight normally as usual
+                    else {
+                        // commence battle
+                        battle(a.name, d.name, a.left, d.right)
+                    }
+                }
             };
 
             // if the attacker has won the battle then capture the card
@@ -379,6 +544,9 @@ impl Card {
                 capture_defender(board[y][x - 1].as_mut().unwrap(), attacking_player);
                 // trigger capture event for the attacker
                 capture_attacker(board[y][x].as_mut().unwrap());
+                if left_same || same {
+                    Card::play(board, (y, x - 1), true);
+                }
             }
         }
     }
@@ -478,7 +646,7 @@ fn main() {
 
         // ai should play
         if player_move == "ai" || player_move == "0" {
-            ai(&mut board, &mut deck1, &mut deck2, current_turn);
+            // ai(&mut board, &mut deck1, &mut deck2, current_turn);
         }
         // player should move so apply player move on the board
         else {
@@ -512,10 +680,13 @@ fn show_board(board: &[[Option<Card>; 5]; 4]) {
                     print!("_________");
                 }
                 Some(card) => {
-                    print!("{:?}({})", card.name, card.player);
+                    print!(
+                        "{:?}({}{}{}{})[{}]",
+                        card.name, card.top, card.right, card.bottom, card.left, card.player
+                    );
                 }
             }
-            print!("\t\t\t");
+            print!("\t\t\t\t");
             flush!();
         }
         println!();
@@ -526,10 +697,12 @@ fn show_board(board: &[[Option<Card>; 5]; 4]) {
 // outputs player deck
 fn show_deck(deck: &Vec<Card>, player: u8) {
     print!("Player#{} Deck:  ", player);
+    let mut i: u8 = 0;
     for c in deck.iter() {
+        i += 1;
         print!(
-            "{:?}({}{}{}{})        ",
-            c.name, c.top, c.right, c.bottom, c.left
+            "{}-{:?}({}{}{}{})        ",
+            i, c.name, c.top, c.right, c.bottom, c.left
         );
         flush!();
     }
@@ -569,7 +742,7 @@ fn place_card(
 
             Card::placement(board, mov, bombs);
 
-            Card::play(board, mov);
+            Card::play(board, mov, false);
 
             return true;
         }
@@ -609,11 +782,11 @@ fn parse_player_move(player_move: &str) -> (usize, usize, usize) {
 }
 
 // plays the best move on the board for current player
-fn ai(
-    board: &mut [[Option<Card>; 5]; 4],
-    deck1: &mut Vec<Card>,
-    deck2: &mut Vec<Card>,
-    player: u8,
-) {
-    return;
-}
+// fn ai(
+//     board: &mut [[Option<Card>; 5]; 4],
+//     deck1: &mut Vec<Card>,
+//     deck2: &mut Vec<Card>,
+//     player: u8,
+// ) {
+//     return;
+// }
