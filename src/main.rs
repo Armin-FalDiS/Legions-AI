@@ -39,16 +39,16 @@ struct Card {
 
 impl Card {
     // Returns a copy of the card
-    // fn copy(card: &Card) -> Card {
-    //     return Card {
-    //         name: card.name,
-    //         top: card.top,
-    //         right: card.right,
-    //         bottom: card.bottom,
-    //         left: card.left,
-    //         player: card.player,
-    //     };
-    // }
+    fn copy(card: &Card) -> Card {
+        return Card {
+            name: card.name,
+            top: card.top,
+            right: card.right,
+            bottom: card.bottom,
+            left: card.left,
+            player: card.player,
+        };
+    }
 
     // increases every stat by n up to a maximum of 10
     fn upgrade(&mut self, n: u8) {
@@ -250,13 +250,13 @@ impl Card {
 
     // plays the card which is already placed on the board
     fn play(board: &mut [[Option<Card>; 5]; 4], position: (usize, usize), same: bool) {
-        println!(
-            " ~~~ Play with {:?} @ {}:{} with same = {}",
-            board[position.0][position.1].as_ref().unwrap().name,
-            position.0,
-            position.1,
-            same
-        );
+        // println!(
+        //     " ~~~ Play with {:?} @ {}:{} with same = {}",
+        //     board[position.0][position.1].as_ref().unwrap().name,
+        //     position.0,
+        //     position.1,
+        //     same
+        // );
         // if the attacker has won returns true otherwise false
         fn battle(
             attacker: Unit,
@@ -276,10 +276,10 @@ impl Card {
                 attack_value = t;
             }
 
-            println!(
-                " ~~~ Battle between {:?} & {:?} with {} vs {} repectively",
-                attacker, defender, attack_value, defense_value
-            );
+            // println!(
+            //     " ~~~ Battle between {:?} & {:?} with {} vs {} repectively",
+            //     attacker, defender, attack_value, defense_value
+            // );
 
             // do the battle
             if attack_value > defense_value {
@@ -394,10 +394,10 @@ impl Card {
                 same_count += 1;
             }
 
-            println!(
-                " ~~~ There were {} sames as such: t= {}, r= {}, b= {}, l= {}",
-                same_count, top_same, right_same, bottom_same, left_same
-            );
+            // println!(
+            //     " ~~~ There were {} sames as such: t= {}, r= {}, b= {}, l= {}",
+            //     same_count, top_same, right_same, bottom_same, left_same
+            // );
 
             // if there are less than 2 sames, then same effect is canceled
             if same_count < 2 {
@@ -645,8 +645,18 @@ fn main() {
         let player_move = player_move.trim();
 
         // ai should play
-        if player_move == "ai" || player_move == "0" {
-            // ai(&mut board, &mut deck1, &mut deck2, current_turn);
+        if player_move.is_empty() {
+            let ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
+
+            place_card(
+                &mut board,
+                &mut deck1,
+                &mut deck2,
+                ai_move.0,
+                (ai_move.1, ai_move.2),
+                current_turn,
+                &mut bombs,
+            );
         }
         // player should move so apply player move on the board
         else {
@@ -725,8 +735,11 @@ fn place_card(
     // replace cell placeholder card if move is legal
     match cell {
         // there is already a card in that cell
-        Some(_c) => {
-            println!("That move is not possible !");
+        Some(c) => {
+            println!(
+                "{}-{} is already occupied with a {:?} !",
+                mov.0, mov.1, c.name
+            );
             return false;
         }
         // cell is free to place a card
@@ -781,12 +794,250 @@ fn parse_player_move(player_move: &str) -> (usize, usize, usize) {
     return (card, mov / 5, mov % 5);
 }
 
+// calculates score for each player
+fn calc_scores(board: &[[Option<Card>; 5]; 4]) -> (i8, i8) {
+    let mut p1: i8 = 1;
+    let mut p2: i8 = 0;
+
+    for i in 0..4 {
+        for j in 0..5 {
+            let card = board[i][j].as_ref();
+            match card {
+                Some(c) => {
+                    if c.player == 1 {
+                        p1 += 1;
+                    } else {
+                        p2 += 1;
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
+    return (p1, p2);
+}
+
+// copies the board from source to destination
+fn copy_board(src: &[[Option<Card>; 5]; 4], dst: &mut [[Option<Card>; 5]; 4]) {
+    for i in 0..4 {
+        for j in 0..5 {
+            if src[i][j].is_some() {
+                dst[i][j] = Some(Card::copy(src[i][j].as_ref().unwrap()));
+            }
+        }
+    }
+}
+
 // plays the best move on the board for current player
-// fn ai(
-//     board: &mut [[Option<Card>; 5]; 4],
-//     deck1: &mut Vec<Card>,
-//     deck2: &mut Vec<Card>,
-//     player: u8,
-// ) {
-//     return;
-// }
+fn ai(
+    board: &mut [[Option<Card>; 5]; 4],
+    deck_1: &mut Vec<Card>,
+    deck_2: &mut Vec<Card>,
+    player: u8,
+    bombs: &mut [[u8; 5]; 4],
+) -> (usize, usize, usize) {
+    // init best move and scores
+    let mut best_move: (usize, usize, usize) = (0, 0, 0);
+    let mut best_score: i8;
+    if player == 1 {
+        best_score = -20;
+    } else {
+        best_score = 20;
+    }
+
+    // copy decks
+    let mut deck1: Vec<Card> = Default::default();
+    let mut deck2: Vec<Card> = Default::default();
+    for i in deck_1.iter() {
+        deck1.push(Card::copy(i));
+    }
+    for i in deck_2.iter() {
+        deck2.push(Card::copy(i));
+    }
+
+    // iterate through the board
+    for i in 0..4 {
+        for j in 0..5 {
+            // if the cell is empty
+            if board[i][j].is_none() {
+                println!(
+                    " ||| Progress: {:.2}%",
+                    ((((i as f32) * 5.0) + j as f32) / 20.0) * 100.0
+                );
+                // choose deck based on player turn
+                let deck_range = {
+                    if player == 1 {
+                        0..deck1.len()
+                    } else {
+                        0..deck2.len()
+                    }
+                };
+
+                // iterate through the player's deck
+                for d in deck_range {
+                    // make a copy of the board
+                    let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
+                    copy_board(&board, &mut temp_board);
+
+                    // save card
+                    let temp_card = {
+                        if player == 1 {
+                            Card::copy(&deck1[d])
+                        } else {
+                            Card::copy(&deck2[d])
+                        }
+                    };
+
+                    // place the card down
+                    place_card(board, &mut deck1, &mut deck2, d, (i, j), player, bombs);
+
+                    // maximising player
+                    if player == 1 {
+                        // calculate score for this move
+                        let score = max(
+                            best_score,
+                            minimax(board, &mut deck1, &mut deck2, 1, bombs, 0),
+                        );
+
+                        if score > best_score {
+                            println!(" === New HIGH score for {}, {} !!", i, j);
+                            // we found a better move
+                            best_score = score;
+                            best_move = (d, i, j);
+                        }
+                    }
+                    // minimizing player
+                    else {
+                        // calculate score for this move
+                        let score = min(
+                            best_score,
+                            minimax(board, &mut deck1, &mut deck2, 2, bombs, 0),
+                        );
+
+                        if score < best_score {
+                            println!(" === New HIGH score for {}, {} !!", i, j);
+                            // we found a better move
+                            best_score = score;
+                            best_move = (d, i, j);
+                        }
+                    }
+
+                    // add the played card back to it's deck
+                    if player == 1 {
+                        deck1.insert(d, temp_card);
+                    } else {
+                        deck2.insert(d, temp_card);
+                    }
+
+                    // revert the board
+                    *board = temp_board;
+                }
+            }
+        }
+    }
+
+    return best_move;
+}
+
+fn minimax(
+    board: &mut [[Option<Card>; 5]; 4],
+    deck_1: &mut Vec<Card>,
+    deck_2: &mut Vec<Card>,
+    player: u8,
+    bombs: &mut [[u8; 5]; 4],
+    depth: u16,
+) -> i8 {
+    // calculate scores
+    let player_scores = calc_scores(board);
+    // println!(
+    //     " --- We are at depth {} and Player scores are: {:?}",
+    //     depth, player_scores
+    // );
+    // if the game is finished
+    if player_scores.0 + player_scores.1 == 17 {
+        if player_scores.0 > player_scores.1 {
+            return 100;
+        } else {
+            return -100;
+        }
+    }
+    // the game is not finished in this node so continue
+
+    // we have no cards left so return score
+    if (player == 1 && deck_1.is_empty()) || (player == 2 && deck_2.is_empty()) || depth == 9 {
+        return player_scores.0 - player_scores.1;
+    }
+
+    // init score
+    let mut score: i8;
+    if player == 1 {
+        score = -20
+    } else {
+        score = 20;
+    }
+
+    // copy decks
+    let mut deck1: Vec<Card> = Default::default();
+    let mut deck2: Vec<Card> = Default::default();
+    for i in deck_1.iter() {
+        deck1.push(Card::copy(i));
+    }
+    for i in deck_2.iter() {
+        deck2.push(Card::copy(i));
+    }
+
+    for i in 0..4 {
+        for j in 0..5 {
+            // if cell is empty
+            if board[i][j].is_none() {
+                let deck_range = {
+                    if player == 1 {
+                        deck1.len()
+                    } else {
+                        deck2.len()
+                    }
+                };
+
+                for d in 0..deck_range {
+                    // make a copy of the board
+                    let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
+                    copy_board(&board, &mut temp_board);
+                    // save card
+                    let temp_card = {
+                        if player == 1 {
+                            Card::copy(&deck1[d])
+                        } else {
+                            Card::copy(&deck2[d])
+                        }
+                    };
+
+                    // play card
+                    place_card(board, &mut deck1, &mut deck2, d, (i, j), player, bombs);
+
+                    // recalculate score and add the played card back to it's deck
+                    if player == 1 {
+                        score = max(
+                            score,
+                            minimax(board, &mut deck1, &mut deck2, 2, bombs, depth + 1),
+                        );
+                        deck1.insert(d, temp_card);
+                    } else {
+                        score = min(
+                            score,
+                            minimax(board, &mut deck1, &mut deck2, 1, bombs, depth + 1),
+                        );
+                        deck2.insert(d, temp_card);
+                    }
+
+                    // revert board
+                    *board = temp_board;
+                }
+            }
+        }
+    }
+
+    // println!(" +++ We are at depth {} and score is {}", depth, score);
+
+    return score;
+}
