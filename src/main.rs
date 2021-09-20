@@ -28,6 +28,14 @@ pub enum Unit {
     Ravager,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Direction {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
 struct Card {
     pub name: Unit,
     pub top: u8,
@@ -60,10 +68,10 @@ impl Card {
 
     // decreases every stat by n down to a minimum of 1
     fn downgrade(&mut self, n: u8) {
-        self.top = max(1, self.top - n);
-        self.right = max(1, self.right - n);
-        self.bottom = max(1, self.bottom - n);
-        self.left = max(1, self.left - n);
+        self.top = max(1, self.top as i8 - n as i8) as u8;
+        self.right = max(1, self.right as i8 - n as i8) as u8;
+        self.bottom = max(1, self.bottom as i8 - n as i8) as u8;
+        self.left = max(1, self.left as i8 - n as i8) as u8;
     }
 
     // maps unit type to card values array
@@ -93,6 +101,130 @@ impl Card {
                 left: values[(3 + i) % 4],
                 player,
             });
+        }
+    }
+
+    // gets the first neighbour in specified direction
+    fn get_far_neighbour(
+        direction: Direction,
+        board: &[[Option<Card>; 5]; 4],
+        y: usize,
+        x: usize,
+    ) -> Option<usize> {
+        let iter: Box<dyn Iterator<Item = usize>> = {
+            match direction {
+                Direction::Top => Box::new((0..y).rev()),
+                Direction::Right => Box::new((x + 1)..4) as Box<dyn Iterator<Item = usize>>,
+                Direction::Bottom => Box::new((y + 1)..3) as Box<dyn Iterator<Item = usize>>,
+                Direction::Left => Box::new((0..x).rev()),
+            }
+        };
+
+        // iterate through that direction
+        for i in iter {
+            // determine y & x based on direction
+            let ny = if direction == Direction::Top || direction == Direction::Bottom {
+                i
+            } else {
+                y
+            };
+            let nx = if direction == Direction::Right || direction == Direction::Left {
+                i
+            } else {
+                x
+            };
+            // if we found a card
+            if board[ny][nx].is_some() {
+                if direction == Direction::Top || direction == Direction::Bottom {
+                    return Some(ny); // top or bottom returns y (x is same as main card)
+                } else {
+                    return Some(nx); // left or right returns x (y is same as main card)
+                }
+            }
+        }
+
+        return None;
+    }
+
+    // pulls a card to the neighbouring cell
+    fn pull(
+        y: usize,
+        x: usize,
+        direction: Direction,
+        board: &mut [[Option<Card>; 5]; 4],
+        bombs: &mut [[u8; 5]; 4],
+    ) {
+        // fetch neighbour
+        let neighbour = Card::get_far_neighbour(direction, board, y, x);
+
+        // variable to track bomb damage when pulled
+        let mut damage: u8 = 0;
+
+        // check if neighbour is adjecent
+        let is_adjacent: bool = {
+            if neighbour.is_none() {
+                false
+            } else {
+                let neighbour = *neighbour.as_ref().unwrap();
+                (direction == Direction::Top && neighbour == y - 1)
+                    || (direction == Direction::Right && neighbour == x + 1)
+                    || (direction == Direction::Bottom && neighbour == y + 1)
+                    || (direction == Direction::Left && neighbour == x - 1)
+            }
+        };
+
+        // if there exist a non adjacent neighbour
+        if neighbour.is_some() && !is_adjacent {
+            let neighbour = *neighbour.as_ref().unwrap();
+            let iter = {
+                match direction {
+                    Direction::Top => (neighbour + 1)..y,
+                    Direction::Right => (x + 1)..neighbour,
+                    Direction::Bottom => (y + 1)..neighbour,
+                    Direction::Left => (neighbour + 1)..x,
+                }
+            };
+
+            let dir_vertical: bool = {
+                match direction {
+                    Direction::Top | Direction::Bottom => true,
+                    Direction::Left | Direction::Right => false,
+                }
+            };
+
+            // handle bombs
+            for i in iter {
+                if dir_vertical {
+                    // increase damage
+                    damage += bombs[i][x];
+                    // detonate all bombs in path cell
+                    bombs[i][x] = 0;
+                } else {
+                    damage += bombs[y][i];
+                    bombs[y][i] = 0;
+                }
+            }
+
+            // apply damage and relocate card
+            if dir_vertical {
+                // apply damage to the card
+                board[neighbour][x].as_mut().unwrap().downgrade(damage);
+
+                // relocate the card to the neighbouring cell
+                if direction == Direction::Top {
+                    board[y - 1][x] = board[neighbour][x].take();
+                } else {
+                    board[y + 1][x] = board[neighbour][x].take();
+                }
+            } else {
+                board[y][neighbour].as_mut().unwrap().downgrade(damage);
+
+                if direction == Direction::Right {
+                    board[y][x + 1] = board[y][neighbour].take();
+                } else {
+                    board[y][x - 1] = board[y][neighbour].take();
+                }
+            }
         }
     }
 
@@ -127,66 +259,14 @@ impl Card {
             }
             // Siren pulls cards
             Unit::Siren => {
-                // top card
-                for i in (0..y).rev() {
-                    // if the neighbour is not free then no pulling
-                    if i == y || (i == y - 1 && board[i][x].is_some()) {
-                        break;
-                    }
-                    if board[i][x].is_some() {
-                        // relocate card to neighbour cell
-                        board[y - 1][x] = board[i][x].take();
-                        // check for bomb on that card
-                        Card::bomb_check(board, (y - 1, x), bombs);
-                        // pulls only once
-                        break;
-                    }
-                }
-                // bottom card
-                for i in (y + 1)..4 {
-                    // if the neighbour is not free then no pulling
-                    if i == y || (i == y + 1 && board[i][x].is_some()) {
-                        break;
-                    }
-                    if board[i][x].is_some() {
-                        // relocate card to neighbour cell
-                        board[y + 1][x] = board[i][x].take();
-                        // check for bomb on that card
-                        Card::bomb_check(board, (y + 1, x), bombs);
-                        // pulls only once
-                        break;
-                    }
-                }
-                // left card
-                for i in (0..x).rev() {
-                    // if the neighbour is not free then no pulling
-                    if i == x || (i == x - 1 && board[y][i].is_some()) {
-                        break;
-                    }
-                    if board[y][i].is_some() {
-                        // relocate card to neighbour cell
-                        board[y][x - 1] = board[y][i].take();
-                        // check for bomb on that card
-                        Card::bomb_check(board, (y, x - 1), bombs);
-                        // pulls only once
-                        break;
-                    }
-                }
-                // right card
-                for i in (x + 1)..5 {
-                    // if the neighbour is not free then no pulling
-                    if i == x || (i == x + 1 && board[y][i].is_some()) {
-                        break;
-                    }
-                    if board[y][i].is_some() {
-                        // relocate card to neighbour cell
-                        board[y][x + 1] = board[y][i].take();
-                        // check for bomb on that card
-                        Card::bomb_check(board, (y, x + 1), bombs);
-                        // pulls only once
-                        break;
-                    }
-                }
+                // pull top card
+                Card::pull(y, x, Direction::Top, board, bombs);
+                // pull right card
+                Card::pull(y, x, Direction::Right, board, bombs);
+                // pull bottom card
+                Card::pull(y, x, Direction::Bottom, board, bombs);
+                // pull left card
+                Card::pull(y, x, Direction::Left, board, bombs);
             }
             // Titan flips adjacent cards
             Unit::Titan => {
@@ -227,7 +307,7 @@ impl Card {
         Card::bomb_check(board, position, bombs);
     }
 
-    // checks for bombs and applies effects accordingly
+    // checks for bombs and applies damage accordingly
     fn bomb_check(
         board: &mut [[Option<Card>; 5]; 4],
         position: (usize, usize),
@@ -248,8 +328,8 @@ impl Card {
         }
     }
 
-    // plays the card which is already placed on the board
-    fn play(board: &mut [[Option<Card>; 5]; 4], position: (usize, usize), same: bool) {
+    // play event that need to be run when the card is already placed on the board
+    fn play(board: &mut [[Option<Card>; 5]; 4], y: usize, x: usize, same_chain: bool) {
         // println!(
         //     " ~~~ Play with {:?} @ {}:{} with same = {}",
         //     board[position.0][position.1].as_ref().unwrap().name,
@@ -257,8 +337,144 @@ impl Card {
         //     position.1,
         //     same
         // );
-        // if the attacker has won returns true otherwise false
+
         fn battle(
+            board: &mut [[Option<Card>; 5]; 4],
+            y: usize,
+            x: usize,
+            direction: Direction,
+            same: bool,
+            same_chain: bool,
+        ) {
+            // determine the attacker
+            let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
+
+            // fetch neighbour
+            let neighbour_position: Option<(usize, usize)> = {
+                let card = { board[y][x].as_ref().unwrap().name };
+                match direction {
+                    Direction::Top => {
+                        if y > 0 {
+                            if card == Unit::Keeper {
+                                let n = Card::get_far_neighbour(direction, board, y, x);
+                                if n.is_none() {
+                                    None
+                                } else {
+                                    Some((*n.as_ref().unwrap(), x))
+                                }
+                            } else {
+                                Some((y - 1, x))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Direction::Right => {
+                        if x < 4 {
+                            if card == Unit::Keeper {
+                                let n = Card::get_far_neighbour(direction, board, y, x);
+                                if n.is_none() {
+                                    None
+                                } else {
+                                    Some((y, *n.as_ref().unwrap()))
+                                }
+                            } else {
+                                Some((y, x + 1))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Direction::Bottom => {
+                        if y < 3 {if card == Unit::Keeper {
+                                let n = Card::get_far_neighbour(direction, board, y, x);
+                                if n.is_none() {
+                                    None
+                                } else {
+                                    Some((*n.as_ref().unwrap(), x))
+                                }
+                            } else {
+                                Some((y + 1, x))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Direction::Left => {
+                        if x > 0 {
+                            if card == Unit::Keeper {
+                                let n = Card::get_far_neighbour(direction, board, y, x);
+                                if n.is_none() {
+                                    None
+                                } else {
+                                    Some((y, *n.as_ref().unwrap()))
+                                }
+                            } else {
+                                Some((y, x - 1))
+                            }
+                        } else {
+                            None
+                        }
+                        
+                    }
+                }
+            };
+            let neighbour = {
+                if neighbour_position.is_some() {
+                    let n = *neighbour_position.as_ref().unwrap();
+                    board[n.0][n.1].as_ref()
+                } else {
+                    None
+                }
+            };
+
+            if neighbour.is_some() {
+                // do the battle and save the result in capture
+                let capture: bool = {
+                    // fetch attacker
+                    let a = board[y][x].as_ref().unwrap();
+                    // fetch defender
+                    let d = neighbour.unwrap();
+                    // if attacking player owns this card, there is no battle
+                    if d.player == attacking_player {
+                        false
+                    } else {
+                        // if same effect is present, no battle is needed
+                        if same {
+                            true
+                        }
+                        // otherwise let them fight normally as usual
+                        else {
+                            match direction {
+                                Direction::Top => fight(a.name, d.name, a.top, d.bottom),
+                                Direction::Right => fight(a.name, d.name, a.right, d.left),
+                                Direction::Bottom => fight(a.name, d.name, a.bottom, d.top),
+                                Direction::Left => fight(a.name, d.name, a.left, d.right),
+                            }
+                        }
+                    }
+                };
+
+                // if the attacker has won the battle then capture the card
+                if capture {
+                    let n = *neighbour_position.as_ref().unwrap();
+                    capture_defender(
+                        board[n.0][n.1]
+                            .as_mut()
+                            .unwrap(),
+                        attacking_player,
+                    );
+                    // trigger capture event for the attacker
+                    capture_attacker(board[y][x].as_mut().unwrap());
+                    if same || same_chain {
+                        Card::play(board, n.0, n.1, true);
+                    }
+                }
+            }
+        }
+
+        // if the attacker has won returns true otherwise false
+        fn fight(
             attacker: Unit,
             defender: Unit,
             mut attack_value: u8,
@@ -308,10 +524,6 @@ impl Card {
             }
         }
 
-        // determine attacker position
-        let y = position.0;
-        let x = position.1;
-
         // check for same rule
         let mut top_same: bool = false;
         let mut right_same: bool = false;
@@ -319,7 +531,7 @@ impl Card {
         let mut left_same: bool = false;
 
         // if we are not in a same chain effect, check for sames
-        if !same {
+        if !same_chain {
             // extract neighbouring values
             let top = {
                 if y == 0 {
@@ -408,147 +620,14 @@ impl Card {
             }
         }
 
-        let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
-
         // handle the battle with top neighbour
-        if y > 0 && board[y - 1][x].is_some() {
-            // do the battle and save the result in capture
-            let capture: bool = {
-                // fetch attacker
-                let a = board[y][x].as_ref().unwrap();
-                // fetch defender
-                let d = board[y - 1][x].as_ref().unwrap();
-                // if attacking player owns this card, there is no battle
-                if d.player == attacking_player {
-                    false
-                } else {
-                    // if same effect is present, no battle is needed
-                    if top_same {
-                        true
-                    }
-                    // otherwise let them fight normally as usual
-                    else {
-                        // commence battle
-                        battle(a.name, d.name, a.top, d.bottom)
-                    }
-                }
-            };
-
-            // if the attacker has won the battle then capture the card
-            if capture {
-                capture_defender(board[y - 1][x].as_mut().unwrap(), attacking_player);
-                // trigger capture event for the attacker
-                capture_attacker(board[y][x].as_mut().unwrap());
-                if top_same || same {
-                    Card::play(board, (y - 1, x), true);
-                }
-            }
-        }
-
+        battle(board, y, x, Direction::Top, top_same, same_chain);
         // handle the battle with right neighbour
-        if x < 4 && board[y][x + 1].is_some() {
-            // do the battle and save the result in capture
-            let capture: bool = {
-                // fetch attacker
-                let a = board[y][x].as_ref().unwrap();
-                // fetch defender
-                let d = board[y][x + 1].as_ref().unwrap();
-                // if attacking player owns this card, there is no battle
-                if d.player == attacking_player {
-                    false
-                } else {
-                    // if same effect is present, no battle is needed
-                    if right_same {
-                        true
-                    }
-                    // otherwise let them fight normally as usual
-                    else {
-                        // commence battle
-                        battle(a.name, d.name, a.right, d.left)
-                    }
-                }
-            };
-
-            // if the attacker has won the battle then capture the card
-            if capture {
-                capture_defender(board[y][x + 1].as_mut().unwrap(), attacking_player);
-                // trigger capture event for the attacker
-                capture_attacker(board[y][x].as_mut().unwrap());
-                if right_same || same {
-                    Card::play(board, (y, x + 1), true);
-                }
-            }
-        }
-
+        battle(board, y, x, Direction::Right, right_same, same_chain);
         // handle the battle with the bottom neighbour
-        if y < 3 && board[y + 1][x].is_some() {
-            // do the battle and save the result in capture
-            let capture: bool = {
-                // fetch attacker
-                let a = board[y][x].as_ref().unwrap();
-                // fetch defender
-                let d = board[y + 1][x].as_ref().unwrap();
-                // if attacking player owns this card, there is no battle
-                if d.player == attacking_player {
-                    false
-                } else {
-                    // if same effect is present, no battle is needed
-                    if bottom_same {
-                        true
-                    }
-                    // otherwise let them fight normally as usual
-                    else {
-                        // commence battle
-                        battle(a.name, d.name, a.bottom, d.top)
-                    }
-                }
-            };
-
-            // if the attacker has won the battle then capture the card
-            if capture {
-                capture_defender(board[y + 1][x].as_mut().unwrap(), attacking_player);
-                // trigger capture event for the attacker
-                capture_attacker(board[y][x].as_mut().unwrap());
-                if bottom_same || same {
-                    Card::play(board, (y + 1, x), true);
-                }
-            }
-        }
-
+        battle(board, y, x, Direction::Bottom, bottom_same, same_chain);
         // handle the battle with the left neighbour
-        if x > 0 && board[y][x - 1].is_some() {
-            // do the battle and save the result in capture
-            let capture: bool = {
-                // fetch attacker
-                let a = board[y][x].as_ref().unwrap();
-                // fetch defender
-                let d = board[y][x - 1].as_ref().unwrap();
-                // if attacking player owns this card, there is no battle
-                if d.player == attacking_player {
-                    false
-                } else {
-                    // if same effect is present, no battle is needed
-                    if left_same {
-                        true
-                    }
-                    // otherwise let them fight normally as usual
-                    else {
-                        // commence battle
-                        battle(a.name, d.name, a.left, d.right)
-                    }
-                }
-            };
-
-            // if the attacker has won the battle then capture the card
-            if capture {
-                capture_defender(board[y][x - 1].as_mut().unwrap(), attacking_player);
-                // trigger capture event for the attacker
-                capture_attacker(board[y][x].as_mut().unwrap());
-                if left_same || same {
-                    Card::play(board, (y, x - 1), true);
-                }
-            }
-        }
+        battle(board, y, x, Direction::Left, left_same, same_chain);
     }
 }
 
@@ -620,7 +699,7 @@ fn main() {
     // start of the game
     loop {
         // show board
-        show_board(&board);
+        show_board(&board, &bombs);
 
         // if there are no more cards, end the game!
         if deck1.len() + deck2.len() == 0 {
@@ -682,12 +761,12 @@ fn main() {
 }
 
 // outputs board
-fn show_board(board: &[[Option<Card>; 5]; 4]) {
+fn show_board(board: &[[Option<Card>; 5]; 4], bombs: &[[u8; 5]; 4]) {
     for i in 0..4 {
         for j in 0..5 {
             match &board[i][j] {
                 None => {
-                    print!("_________");
+                    print!("____{}____", bombs[i][j]);
                 }
                 Some(card) => {
                     print!(
@@ -755,7 +834,7 @@ fn place_card(
 
             Card::placement(board, mov, bombs);
 
-            Card::play(board, mov, false);
+            Card::play(board, mov.0, mov.1, false);
 
             return true;
         }
@@ -829,215 +908,223 @@ fn copy_board(src: &[[Option<Card>; 5]; 4], dst: &mut [[Option<Card>; 5]; 4]) {
     }
 }
 
+// returns a vector of (card, row, column) of available moves
+fn available_moves(board: &[[Option<Card>; 5]; 4], deck: &Vec<Card>) -> Vec<(usize, usize, usize)> {
+    let mut moves: Vec<(usize, usize, usize)> = Default::default();
+
+    for i in 0..4 {
+        for j in 0..5 {
+            for d in 0..deck.len() {
+                if board[i][j].is_none() {
+                    moves.push((d, i, j));
+                }
+            }
+        }
+    }
+
+    return moves;
+}
+
 // plays the best move on the board for current player
 fn ai(
     board: &mut [[Option<Card>; 5]; 4],
-    deck_1: &mut Vec<Card>,
-    deck_2: &mut Vec<Card>,
+    deck1: &mut Vec<Card>,
+    deck2: &mut Vec<Card>,
     player: u8,
     bombs: &mut [[u8; 5]; 4],
 ) -> (usize, usize, usize) {
     // init best move and scores
-    let mut best_move: (usize, usize, usize) = (0, 0, 0);
+    let mut best_move: usize;
     let mut best_score: i8;
+    let moves: Vec<(usize, usize, usize)>;
+
     if player == 1 {
-        best_score = -20;
+        best_score = -100;
+        best_move = 0;
+        moves = available_moves(board, deck1);
     } else {
-        best_score = 20;
+        best_score = 100;
+        best_move = 0;
+        moves = available_moves(board, deck2);
     }
 
-    // copy decks
-    let mut deck1: Vec<Card> = Default::default();
-    let mut deck2: Vec<Card> = Default::default();
-    for i in deck_1.iter() {
-        deck1.push(Card::copy(i));
-    }
-    for i in deck_2.iter() {
-        deck2.push(Card::copy(i));
-    }
-
-    // iterate through the board
-    for i in 0..4 {
-        for j in 0..5 {
-            // if the cell is empty
-            if board[i][j].is_none() {
-                println!(
-                    " ||| Progress: {:.2}%",
-                    ((((i as f32) * 5.0) + j as f32) / 20.0) * 100.0
-                );
-                // choose deck based on player turn
-                let deck_range = {
-                    if player == 1 {
-                        0..deck1.len()
-                    } else {
-                        0..deck2.len()
-                    }
-                };
-
-                // iterate through the player's deck
-                for d in deck_range {
-                    // make a copy of the board
-                    let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
-                    copy_board(&board, &mut temp_board);
-
-                    // save card
-                    let temp_card = {
-                        if player == 1 {
-                            Card::copy(&deck1[d])
-                        } else {
-                            Card::copy(&deck2[d])
-                        }
-                    };
-
-                    // place the card down
-                    place_card(board, &mut deck1, &mut deck2, d, (i, j), player, bombs);
-
-                    // maximising player
-                    if player == 1 {
-                        // calculate score for this move
-                        let score = max(
-                            best_score,
-                            minimax(board, &mut deck1, &mut deck2, 1, bombs, 0),
-                        );
-
-                        if score > best_score {
-                            println!(" === New HIGH score for {}, {} !!", i, j);
-                            // we found a better move
-                            best_score = score;
-                            best_move = (d, i, j);
-                        }
-                    }
-                    // minimizing player
-                    else {
-                        // calculate score for this move
-                        let score = min(
-                            best_score,
-                            minimax(board, &mut deck1, &mut deck2, 2, bombs, 0),
-                        );
-
-                        if score < best_score {
-                            println!(" === New HIGH score for {}, {} !!", i, j);
-                            // we found a better move
-                            best_score = score;
-                            best_move = (d, i, j);
-                        }
-                    }
-
-                    // add the played card back to it's deck
-                    if player == 1 {
-                        deck1.insert(d, temp_card);
-                    } else {
-                        deck2.insert(d, temp_card);
-                    }
-
-                    // revert the board
-                    *board = temp_board;
-                }
-            }
+    // determines maximum depth of minimax algorithm
+    let max_depth: u8 = {
+        match deck1.len() + deck2.len() {
+            0..=7 => 4,
+            8..=11 => 3,
+            _ => 2,
         }
+    };
+
+    // iterate through the moves
+    for m in 0..moves.len() {
+        println!(" === Progress: {}/{}", m, moves.len());
+
+        // determine move
+        let mov = moves[m];
+
+        // make a copy of the board
+        let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
+        copy_board(&board, &mut temp_board);
+
+        // save card
+        let temp_card = {
+            if player == 1 {
+                Card::copy(&deck1[mov.0])
+            } else {
+                Card::copy(&deck2[mov.0])
+            }
+        };
+
+        let temp_bombs = bombs.clone();
+
+        // place the card down
+        place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs);
+
+        // maximising player
+        if player == 1 {
+            // calculate score for this move
+            let score = minimax(board, deck1, deck2, bombs, 2, max_depth);
+
+            if score > best_score {
+                println!(
+                    " === New HIGH score for {}, {} !! It's {}",
+                    mov.1, mov.2, score
+                );
+                // we found a better move
+                best_score = score;
+                best_move = m;
+            }
+
+            // put the card back
+            deck1.insert(mov.0, temp_card);
+        }
+        // minimizing player
+        else {
+            // calculate score for this move
+            let score = minimax(board, deck1, deck2, bombs, 1, max_depth);
+
+            if score < best_score {
+                println!(
+                    " === New HIGH score for {}, {} !! It's {}",
+                    mov.1, mov.2, score
+                );
+                // we found a better move
+                best_score = score;
+                best_move = m;
+            }
+
+            // put the card back
+            deck2.insert(mov.0, temp_card);
+        }
+
+        // revert the board
+        *board = temp_board;
+
+        // revert bombs
+        *bombs = temp_bombs;
     }
 
-    return best_move;
+    return moves[best_move];
 }
 
 fn minimax(
     board: &mut [[Option<Card>; 5]; 4],
-    deck_1: &mut Vec<Card>,
-    deck_2: &mut Vec<Card>,
-    player: u8,
+    deck1: &mut Vec<Card>,
+    deck2: &mut Vec<Card>,
     bombs: &mut [[u8; 5]; 4],
-    depth: u16,
+    player: u8,
+    depth: u8,
 ) -> i8 {
-    // calculate scores
-    let player_scores = calc_scores(board);
-    // println!(
-    //     " --- We are at depth {} and Player scores are: {:?}",
-    //     depth, player_scores
-    // );
-    // if the game is finished
-    if player_scores.0 + player_scores.1 == 17 {
+    let player_scores = calc_scores(&board);
+
+    // check if the game is over
+    if deck1.is_empty() && deck2.is_empty() {
+        // player 1 wins
         if player_scores.0 > player_scores.1 {
-            return 100;
-        } else {
-            return -100;
+            // println!(" ### Player1's win @ depth {}", depth);
+            return 120;
+        }
+        // player 2 wins
+        else {
+            // println!(" ### Player2's win @ depth {}", depth);
+            return -120;
         }
     }
-    // the game is not finished in this node so continue
 
-    // we have no cards left so return score
-    if (player == 1 && deck_1.is_empty()) || (player == 2 && deck_2.is_empty()) || depth == 9 {
+    // if we are out of depth, return static evaluation
+    if depth == 0 {
         return player_scores.0 - player_scores.1;
     }
 
-    // init score
-    let mut score: i8;
+    // get all possible moves & init score
+    let moves: Vec<(usize, usize, usize)>;
+    let mut best_score: i8;
     if player == 1 {
-        score = -20
+        moves = available_moves(board, deck1);
+        best_score = -100;
     } else {
-        score = 20;
+        moves = available_moves(board, deck2);
+        best_score = 100;
     }
 
-    // copy decks
-    let mut deck1: Vec<Card> = Default::default();
-    let mut deck2: Vec<Card> = Default::default();
-    for i in deck_1.iter() {
-        deck1.push(Card::copy(i));
-    }
-    for i in deck_2.iter() {
-        deck2.push(Card::copy(i));
-    }
+    for m in 0..moves.len() {
+        // determine move
+        let mov = moves[m];
 
-    for i in 0..4 {
-        for j in 0..5 {
-            // if cell is empty
-            if board[i][j].is_none() {
-                let deck_range = {
-                    if player == 1 {
-                        deck1.len()
-                    } else {
-                        deck2.len()
-                    }
-                };
+        // make a copy of the board
+        let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
+        copy_board(&board, &mut temp_board);
 
-                for d in 0..deck_range {
-                    // make a copy of the board
-                    let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
-                    copy_board(&board, &mut temp_board);
-                    // save card
-                    let temp_card = {
-                        if player == 1 {
-                            Card::copy(&deck1[d])
-                        } else {
-                            Card::copy(&deck2[d])
-                        }
-                    };
-
-                    // play card
-                    place_card(board, &mut deck1, &mut deck2, d, (i, j), player, bombs);
-
-                    // recalculate score and add the played card back to it's deck
-                    if player == 1 {
-                        score = max(
-                            score,
-                            minimax(board, &mut deck1, &mut deck2, 2, bombs, depth + 1),
-                        );
-                        deck1.insert(d, temp_card);
-                    } else {
-                        score = min(
-                            score,
-                            minimax(board, &mut deck1, &mut deck2, 1, bombs, depth + 1),
-                        );
-                        deck2.insert(d, temp_card);
-                    }
-
-                    // revert board
-                    *board = temp_board;
-                }
+        // save card
+        let temp_card = {
+            if player == 1 {
+                Card::copy(&deck1[mov.0])
+            } else {
+                Card::copy(&deck2[mov.0])
             }
+        };
+
+        // make a copy of the bombs
+        let temp_bombs = bombs.clone();
+
+        place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs);
+
+        if player == 1 {
+            let score = minimax(board, deck1, deck2, bombs, 2, depth - 1);
+
+            if score > best_score {
+                // println!(
+                //     " ### New high score for MAX player @ {}, {} with {:?}",
+                //     mov.1, mov.2, temp_card.name
+                // );
+                best_score = score;
+            }
+
+            // put the taken card back
+            deck1.insert(mov.0, temp_card);
+        } else {
+            let score = minimax(board, deck1, deck2, bombs, 1, depth - 1);
+
+            if score < best_score {
+                // println!(
+                //     " ### New high score for MIN player @ {}, {} with {:?}",
+                //     mov.1, mov.2, temp_card.name
+                // );
+                best_score = score;
+            }
+
+            // put the taken card back
+            deck2.insert(mov.0, temp_card);
         }
+
+        // revert board
+        *board = temp_board;
+
+        // revert bombs
+        *bombs = temp_bombs;
     }
 
-    // println!(" +++ We are at depth {} and score is {}", depth, score);
-
-    return score;
+    return best_score;
 }
