@@ -75,16 +75,16 @@ impl Card {
     }
 
     // maps unit type to card values array
-    fn get_values(unit: Unit) -> [u8; 4] {
+    fn get_values(unit: Unit) -> [[u8; 4]; 4] {
         match unit {
-            Unit::Warden => [6, 6, 4, 4],
-            Unit::Siren => [7, 4, 4, 5],
-            Unit::Keeper => [9, 5, 1, 5],
-            Unit::Saboteur => [6, 5, 4, 5],
-            Unit::Swarm => [7, 3, 3, 3],
-            Unit::Slayer => [1, 6, 7, 6],
-            Unit::Titan => [7, 4, 6, 3],
-            Unit::Ravager => [8, 4, 6, 2],
+            Unit::Warden => [[6, 6, 4, 4], [4, 6, 6, 4], [4, 4, 6, 6], [6, 4, 4, 6]],
+            Unit::Siren => [[7, 5, 4, 4], [4, 7, 5, 4], [4, 4, 7, 5], [5, 4, 4, 7]],
+            Unit::Keeper => [[9, 5, 1, 5], [5, 9, 5, 1], [1, 5, 9, 5], [5, 1, 5, 9]],
+            Unit::Saboteur => [[6, 5, 4, 5], [5, 6, 5, 4], [4, 5, 6, 5], [5, 4, 5, 6]],
+            Unit::Swarm => [[7, 3, 3, 3], [3, 7, 3, 3], [3, 3, 7, 3], [3, 3, 3, 7]],
+            Unit::Slayer => [[1, 6, 7, 6], [6, 1, 6, 7], [7, 6, 1, 6], [6, 7, 6, 1]],
+            Unit::Titan => [[7, 3, 6, 4], [4, 7, 3, 6], [6, 4, 7, 3], [3, 6, 4, 7]],
+            Unit::Ravager => [[8, 2, 6, 4], [4, 8, 2, 6], [6, 4, 8, 2], [2, 6, 4, 8]]
         }
     }
 
@@ -92,13 +92,13 @@ impl Card {
     fn add_to_deck(deck: &mut Vec<Card>, card: Unit, player: u8) {
         let values = Card::get_values(card);
 
-        for i in 0..4 {
+        for i in values {
             deck.push(Card {
                 name: card,
-                top: values[(0 + i) % 4],
-                right: values[(1 + i) % 4],
-                bottom: values[(2 + i) % 4],
-                left: values[(3 + i) % 4],
+                top: i[0],
+                right: i[1],
+                bottom: i[2],
+                left: i[3],
                 player,
             });
         }
@@ -807,6 +807,8 @@ fn main() {
                 current_turn,
                 &mut bombs,
             );
+
+            println!("\nAI moved on {}, {}\n", ai_move.1, ai_move.2);
         }
         // player should move so apply player move on the board
         else {
@@ -992,14 +994,110 @@ fn copy_board(src: &[[Option<Card>; 5]; 4], dst: &mut [[Option<Card>; 5]; 4]) {
 }
 
 // returns a vector of (card, row, column) of available moves
-fn available_moves(board: &[[Option<Card>; 5]; 4], deck: &Vec<Card>) -> Vec<(usize, usize, usize)> {
+fn available_moves(board: &[[Option<Card>; 5]; 4], deck: &Vec<Card>, player: u8) -> Vec<(usize, usize, usize)> {
     let mut moves: Vec<(usize, usize, usize)> = Default::default();
 
+    // iterate through the boards for each card in deck
     for i in 0..4 {
         for j in 0..5 {
             for d in 0..deck.len() {
                 if board[i][j].is_none() {
-                    moves.push((d, i, j));
+                    // flag to determine whether the move has priority
+                    let has_priority: bool = {
+                        match deck[d].name {
+                            // Keeper and Siren affect cards at range so having a far neighbour is could be good
+                            Unit::Keeper | Unit::Siren => {
+                                // fetch top neighbour
+                                let top = Card::get_far_neighbour(Direction::Top, board, i, j);
+                                let top: Option<&Card> = {
+                                    if top.is_some() {
+                                        board[top.unwrap()][j].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                // fetch bottom neighbour
+                                let bottom = Card::get_far_neighbour(Direction::Bottom, board, i, j);
+                                let bottom: Option<&Card> = {
+                                    if bottom.is_some() {
+                                        board[bottom.unwrap()][j].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                // fetch right neighbour
+                                let right = Card::get_far_neighbour(Direction::Right, board, i, j);
+                                let right: Option<&Card> = {
+                                    if right.is_some() {
+                                        board[i][right.unwrap()].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                // fetch left neighbour
+                                let left = Card::get_far_neighbour(Direction::Left, board, i, j);
+                                let left: Option<&Card> = {
+                                    if left.is_some() {
+                                        board[i][left.unwrap()].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+
+                                // return true if there is a neighbour which player does not own
+                                (top.is_some() && top.unwrap().player != player)
+                                || (bottom.is_some() && bottom.unwrap().player != player)
+                                || (right.is_some() && right.unwrap().player != player)
+                                || (left.is_some() && left.unwrap().player != player)
+                            }
+                            // other units should check out cells which have cards adjacent to them
+                            _ => {
+                                let top = {
+                                    if i > 0 {
+                                        board[i - 1][j].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                let bottom = {
+                                    if i < 3 {
+                                        board[i + 1][j].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                let right = {
+                                    if j < 4 {
+                                        board[i][j + 1].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                let left = {
+                                    if j > 0 {
+                                        board[i][j - 1].as_ref()
+                                    } else {
+                                        None
+                                    }
+                                };
+
+                                // return true if there is an adjacent neighbour which the player does not own
+                                (top.is_some() && top.unwrap().player != player)
+                                || (bottom.is_some() && bottom.unwrap().player != player)
+                                || (right.is_some() && right.unwrap().player != player)
+                                || (left.is_some() && left.unwrap().player != player)
+                            }
+                        }
+                    };
+
+                    // if move has priority, add it to the beginning of the list
+                    if has_priority {
+                        moves.insert(0, (d, i, j));
+                    }
+                    // otherwise add it to the end of the list 
+                    else {
+                        moves.push((d, i, j));
+                    }
                 }
             }
         }
@@ -1024,19 +1122,19 @@ fn ai(
     if player == 1 {
         best_score = -100;
         best_move = 0;
-        moves = available_moves(board, deck1);
+        moves = available_moves(board, deck1, 1);
     } else {
         best_score = 100;
         best_move = 0;
-        moves = available_moves(board, deck2);
+        moves = available_moves(board, deck2, 2);
     }
 
     // determines maximum depth of minimax algorithm
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
-            0..=7 => 7,
-            8..=11 => 5,
-            _ => 4,
+            0..=7 => 5,
+            8..=11 => 4,
+            _ => 3,
         }
     };
 
@@ -1147,10 +1245,10 @@ fn minimax(
     let moves: Vec<(usize, usize, usize)>;
     let mut best_score: i8;
     if player == 1 {
-        moves = available_moves(board, deck1);
+        moves = available_moves(board, deck1, 1);
         best_score = -100;
     } else {
-        moves = available_moves(board, deck2);
+        moves = available_moves(board, deck2, 2);
         best_score = 100;
     }
 
