@@ -746,18 +746,41 @@ fn main() {
 
     // start of the game
     loop {
+        println!();
         // show board
         show_board(&board, &bombs);
 
         // if there are no more cards, end the game!
         if deck1.len() + deck2.len() == 0 {
+            // show scores and the winner
+            let scoreboard = calc_scores(&board);
+            println!(
+                "\n
+            ************************************
+            *       The score is {} to {}
+            *       Player {} WINS !
+            ************************************
+            \n",
+                scoreboard.0,
+                scoreboard.1,
+                {
+                    if scoreboard.0 > scoreboard.1 {
+                        1
+                    } else {
+                        2
+                    }
+                }
+            );
+            // end game
             break;
         }
 
+        println!();
         // show player1 deck
         show_deck(&deck1, 1);
         // show player2 deck
         show_deck(&deck2, 2);
+        println!();
 
         // determine current turn's player
         let current_turn = (turn % 2) + 1;
@@ -1011,9 +1034,9 @@ fn ai(
     // determines maximum depth of minimax algorithm
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
-            0..=7 => 4,
-            8..=11 => 3,
-            _ => 2,
+            0..=7 => 7,
+            8..=11 => 5,
+            _ => 4,
         }
     };
 
@@ -1045,11 +1068,11 @@ fn ai(
         // maximising player
         if player == 1 {
             // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 2, max_depth);
+            let score = minimax(board, deck1, deck2, bombs, 2, -100, 100, max_depth);
 
             if score > best_score {
                 println!(
-                    " === New HIGH score for {}, {} !! It's {}",
+                    " === New HIGH score for MAX @ {}, {} !! It's {}",
                     mov.1, mov.2, score
                 );
                 // we found a better move
@@ -1063,11 +1086,11 @@ fn ai(
         // minimizing player
         else {
             // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 1, max_depth);
+            let score = minimax(board, deck1, deck2, bombs, 1, -100, 100, max_depth);
 
             if score < best_score {
                 println!(
-                    " === New HIGH score for {}, {} !! It's {}",
+                    " === New HIGH score for MIN @ {}, {} !! It's {}",
                     mov.1, mov.2, score
                 );
                 // we found a better move
@@ -1095,6 +1118,8 @@ fn minimax(
     deck2: &mut Vec<Card>,
     bombs: &mut [[u8; 5]; 4],
     player: u8,
+    mut alpha: i8,
+    mut beta: i8,
     depth: u8,
 ) -> i8 {
     let player_scores = calc_scores(&board);
@@ -1129,6 +1154,7 @@ fn minimax(
         best_score = 100;
     }
 
+    // iterate through moves
     for m in 0..moves.len() {
         // determine move
         let mov = moves[m];
@@ -1152,38 +1178,42 @@ fn minimax(
         place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs);
 
         if player == 1 {
-            let score = minimax(board, deck1, deck2, bombs, 2, depth - 1);
-
-            if score > best_score {
-                // println!(
-                //     " ### New high score for MAX player @ {}, {} with {:?}",
-                //     mov.1, mov.2, temp_card.name
-                // );
-                best_score = score;
-            }
+            best_score = max(
+                best_score,
+                minimax(board, deck1, deck2, bombs, 2, alpha, beta, depth - 1),
+            );
 
             // put the taken card back
             deck1.insert(mov.0, temp_card);
-        } else {
-            let score = minimax(board, deck1, deck2, bombs, 1, depth - 1);
+            // revert board
+            *board = temp_board;
+            // revert bombs
+            *bombs = temp_bombs;
 
-            if score < best_score {
-                // println!(
-                //     " ### New high score for MIN player @ {}, {} with {:?}",
-                //     mov.1, mov.2, temp_card.name
-                // );
-                best_score = score;
+            if best_score >= beta {
+                break;
             }
+
+            alpha = max(alpha, best_score);
+        } else {
+            best_score = min(
+                best_score,
+                minimax(board, deck1, deck2, bombs, 1, alpha, beta, depth - 1),
+            );
 
             // put the taken card back
             deck2.insert(mov.0, temp_card);
+            // revert board
+            *board = temp_board;
+            // revert bombs
+            *bombs = temp_bombs;
+
+            if best_score <= alpha {
+                break;
+            }
+
+            beta = min(beta, best_score);
         }
-
-        // revert board
-        *board = temp_board;
-
-        // revert bombs
-        *bombs = temp_bombs;
     }
 
     return best_score;
