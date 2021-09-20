@@ -114,8 +114,8 @@ impl Card {
         let iter: Box<dyn Iterator<Item = usize>> = {
             match direction {
                 Direction::Top => Box::new((0..y).rev()),
-                Direction::Right => Box::new((x + 1)..4) as Box<dyn Iterator<Item = usize>>,
-                Direction::Bottom => Box::new((y + 1)..3) as Box<dyn Iterator<Item = usize>>,
+                Direction::Right => Box::new((x + 1)..5) as Box<dyn Iterator<Item = usize>>,
+                Direction::Bottom => Box::new((y + 1)..4) as Box<dyn Iterator<Item = usize>>,
                 Direction::Left => Box::new((0..x).rev()),
             }
         };
@@ -185,6 +185,7 @@ impl Card {
                 }
             };
 
+            // flag showing whether the direction is vertical
             let dir_vertical: bool = {
                 match direction {
                     Direction::Top | Direction::Bottom => true,
@@ -245,15 +246,15 @@ impl Card {
                     bombs[y - 1][x] += 1;
                 }
                 // bottom neighbour
-                else if y < 3 && board[y + 1][x].is_none() {
+                if y < 3 && board[y + 1][x].is_none() {
                     bombs[y + 1][x] += 1;
                 }
                 // left neighbour
-                else if x > 0 && board[y][x - 1].is_none() {
+                if x > 0 && board[y][x - 1].is_none() {
                     bombs[y][x - 1] += 1;
                 }
                 // right neighbour
-                else if x < 4 && board[y][x + 1].is_none() {
+                if x < 4 && board[y][x + 1].is_none() {
                     bombs[y][x + 1] += 1;
                 }
             }
@@ -328,6 +329,27 @@ impl Card {
         }
     }
 
+    // returns the count of player owned swarms
+    fn swarm_count(board: &[[Option<Card>; 5]; 4], player: u8) -> u8 {
+        let mut swarm: u8 = 0;
+        for i in 0..4 {
+            for j in 0..5 {
+                if board[i][j].is_some() {
+                    let card = board[i][j].as_ref().unwrap();
+                    if card.name == Unit::Swarm && card.player == player {
+                        swarm += 1;
+                    }
+                }
+            }
+        }
+        // swarm gets a bonus for each ally swarm except self
+        if swarm > 0 {
+            return swarm - 1;
+        } else {
+            return swarm;
+        }
+    }
+
     // play event that need to be run when the card is already placed on the board
     fn play(board: &mut [[Option<Card>; 5]; 4], y: usize, x: usize, same_chain: bool) {
         // println!(
@@ -386,7 +408,8 @@ impl Card {
                         }
                     }
                     Direction::Bottom => {
-                        if y < 3 {if card == Unit::Keeper {
+                        if y < 3 {
+                            if card == Unit::Keeper {
                                 let n = Card::get_far_neighbour(direction, board, y, x);
                                 if n.is_none() {
                                     None
@@ -415,7 +438,6 @@ impl Card {
                         } else {
                             None
                         }
-                        
                     }
                 }
             };
@@ -446,10 +468,18 @@ impl Card {
                         // otherwise let them fight normally as usual
                         else {
                             match direction {
-                                Direction::Top => fight(a.name, d.name, a.top, d.bottom),
-                                Direction::Right => fight(a.name, d.name, a.right, d.left),
-                                Direction::Bottom => fight(a.name, d.name, a.bottom, d.top),
-                                Direction::Left => fight(a.name, d.name, a.left, d.right),
+                                Direction::Top => {
+                                    fight(a.name, d.name, a.top, d.bottom, board, attacking_player)
+                                }
+                                Direction::Right => {
+                                    fight(a.name, d.name, a.right, d.left, board, attacking_player)
+                                }
+                                Direction::Bottom => {
+                                    fight(a.name, d.name, a.bottom, d.top, board, attacking_player)
+                                }
+                                Direction::Left => {
+                                    fight(a.name, d.name, a.left, d.right, board, attacking_player)
+                                }
                             }
                         }
                     }
@@ -458,12 +488,7 @@ impl Card {
                 // if the attacker has won the battle then capture the card
                 if capture {
                     let n = *neighbour_position.as_ref().unwrap();
-                    capture_defender(
-                        board[n.0][n.1]
-                            .as_mut()
-                            .unwrap(),
-                        attacking_player,
-                    );
+                    capture_defender(board[n.0][n.1].as_mut().unwrap(), attacking_player);
                     // trigger capture event for the attacker
                     capture_attacker(board[y][x].as_mut().unwrap());
                     if same || same_chain {
@@ -479,17 +504,40 @@ impl Card {
             defender: Unit,
             mut attack_value: u8,
             mut defense_value: u8,
+            board: &[[Option<Card>; 5]; 4],
+            attacking_player: u8,
         ) -> bool {
-            // Warden has a defense bonus
-            if defender == Unit::Warden {
-                defense_value += 1;
+            match defender {
+                // Warden has a defense bonus
+                Unit::Warden => {
+                    defense_value += 1;
+                }
+                // Swarm gets a bonus
+                Unit::Swarm => {
+                    let defending_player = (attacking_player % 2) + 1;
+                    defense_value = min(
+                        10,
+                        defense_value + Card::swarm_count(board, defending_player),
+                    );
+                }
+                _ => {}
             }
 
-            // slayer uses swapped attack values
-            if attacker == Unit::Slayer {
-                let t = defense_value;
-                defense_value = attack_value;
-                attack_value = t;
+            match attacker {
+                // Slayer uses swapped attack values
+                Unit::Slayer => {
+                    let t = defense_value;
+                    defense_value = attack_value;
+                    attack_value = t;
+                }
+                // Swarm gets ally bonus
+                Unit::Swarm => {
+                    attack_value = min(
+                        10,
+                        attack_value + Card::swarm_count(board, attacking_player),
+                    );
+                }
+                _ => {}
             }
 
             // println!(
@@ -769,10 +817,22 @@ fn show_board(board: &[[Option<Card>; 5]; 4], bombs: &[[u8; 5]; 4]) {
                     print!("____{}____", bombs[i][j]);
                 }
                 Some(card) => {
-                    print!(
-                        "{:?}({}{}{}{})[{}]",
-                        card.name, card.top, card.right, card.bottom, card.left, card.player
-                    );
+                    if card.name == Unit::Swarm {
+                        let mut c = Card::copy(card);
+
+                        let swarm = Card::swarm_count(board, card.player);
+                        c.upgrade(swarm);
+
+                        print!(
+                            "{:?}({}{}{}{})[{}]",
+                            c.name, c.top, c.right, c.bottom, c.left, c.player
+                        );
+                    } else {
+                        print!(
+                            "{:?}({}{}{}{})[{}]",
+                            card.name, card.top, card.right, card.bottom, card.left, card.player
+                        );
+                    }
                 }
             }
             print!("\t\t\t\t");
