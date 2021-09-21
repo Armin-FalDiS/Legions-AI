@@ -586,17 +586,16 @@ impl Card {
             board: &mut [[Option<Card>; 5]; 4],
             same_chain: bool,
         ) {
-            println!(
-                "Handling a {:?} @ {}, {} vs {}, {} with same_count = {} & same_chain = {}",
-                result,
-                position.0 + 1,
-                position.1 + 1,
-                neighbour_position.0 + 1,
-                neighbour_position.1 + 1,
-                same,
-                same_chain
-            );
-
+            // println!(
+            //     "Handling a {:?} @ {}, {} vs {}, {} with same_count = {} & same_chain = {}",
+            //     result,
+            //     position.0 + 1,
+            //     position.1 + 1,
+            //     neighbour_position.0 + 1,
+            //     neighbour_position.1 + 1,
+            //     same,
+            //     same_chain
+            // );
             match result {
                 FightResult::Win => {
                     // capture neighbour when the battle is won
@@ -1207,11 +1206,11 @@ fn ai(
     let moves: Vec<(usize, usize, usize)>;
 
     if player == 1 {
-        best_score = -100;
+        best_score = -120;
         best_move = 0;
         moves = available_moves(board, bombs, deck1, 1);
     } else {
-        best_score = 100;
+        best_score = 120;
         best_move = 0;
         moves = available_moves(board, bombs, deck2, 2);
     }
@@ -1220,7 +1219,7 @@ fn ai(
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
             0..=7 => 5,
-            8..=11 => 4,
+            8..=10 => 4,
             _ => 3,
         }
     };
@@ -1253,7 +1252,7 @@ fn ai(
         // maximising player
         if player == 1 {
             // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 2, -100, 100, max_depth);
+            let score = minimax(board, deck1, deck2, bombs, 2, -120, 120, max_depth);
 
             if score > best_score {
                 println!(
@@ -1271,7 +1270,7 @@ fn ai(
         // minimizing player
         else {
             // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 1, -100, 100, max_depth);
+            let score = minimax(board, deck1, deck2, bombs, 1, -120, 120, max_depth);
 
             if score < best_score {
                 println!(
@@ -1294,8 +1293,8 @@ fn ai(
         *bombs = temp_bombs;
     }
 
-    if best_score == 120 || best_score == -120 {
-        println!("\n  Omae wa mou shinderu\n")
+    if (player == 1 && best_score == 120) || (player == 2 && best_score == -120) {
+        println!("\n  Omae wa mou shinderu");
     }
 
     return moves[best_move];
@@ -1311,25 +1310,20 @@ fn minimax(
     mut beta: i8,
     depth: u8,
 ) -> i8 {
-    let player_scores = calc_scores(&board);
+    let (p1_score, p2_score) = calc_scores(&board);
 
-    // check if the game is over
-    if deck1.is_empty() && deck2.is_empty() {
-        // player 1 wins
-        if player_scores.0 > player_scores.1 {
-            // println!(" ### Player1's win @ depth {}", depth);
+    // if player 2 is out of cards, the game is over
+    if deck2.is_empty() {
+        if p1_score > p2_score {
             return 120;
-        }
-        // player 2 wins
-        else {
-            // println!(" ### Player2's win @ depth {}", depth);
+        } else {
             return -120;
         }
     }
 
     // if we are out of depth, return static evaluation
     if depth == 0 {
-        return player_scores.0 - player_scores.1;
+        return p1_score - p2_score;
     }
 
     // get all possible moves & init score
@@ -1337,10 +1331,10 @@ fn minimax(
     let mut best_score: i8;
     if player == 1 {
         moves = available_moves(board, bombs, deck1, 1);
-        best_score = -100;
+        best_score = -120;
     } else {
         moves = available_moves(board, bombs, deck2, 2);
-        best_score = 100;
+        best_score = 120;
     }
 
     // iterate through moves
