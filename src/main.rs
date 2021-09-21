@@ -1,4 +1,9 @@
-use std::{cmp::{max, min, PartialEq}, io::{stdin, stdout, Write}, mem::{self, swap}, panic};
+use std::{
+    cmp::{max, min, PartialEq},
+    io::{stdin, stdout, Write},
+    mem::{self, swap},
+    panic,
+};
 
 macro_rules! flush {
     () => {
@@ -457,62 +462,60 @@ impl Card {
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
                 let d = neighbour.unwrap();
-                // if this card belongs to the opponent, fight it
-                if d.player != attacking_player {
-                    let n = neighbour_position.unwrap();
-                    match direction {
-                        Direction::Top => {
-                            return (
-                                Some(fight(
-                                    a.name,
-                                    d.name,
-                                    a.top,
-                                    d.bottom,
-                                    board,
-                                    attacking_player,
-                                )),
-                                (n.0, n.1),
-                            );
-                        }
-                        Direction::Right => {
-                            return (
-                                Some(fight(
-                                    a.name,
-                                    d.name,
-                                    a.right,
-                                    d.left,
-                                    board,
-                                    attacking_player,
-                                )),
-                                (n.0, n.1),
-                            );
-                        }
-                        Direction::Bottom => {
-                            return (
-                                Some(fight(
-                                    a.name,
-                                    d.name,
-                                    a.bottom,
-                                    d.top,
-                                    board,
-                                    attacking_player,
-                                )),
-                                (n.0, n.1),
-                            );
-                        }
-                        Direction::Left => {
-                            return (
-                                Some(fight(
-                                    a.name,
-                                    d.name,
-                                    a.left,
-                                    d.right,
-                                    board,
-                                    attacking_player,
-                                )),
-                                (n.0, n.1),
-                            );
-                        }
+
+                let n = neighbour_position.unwrap();
+                match direction {
+                    Direction::Top => {
+                        return (
+                            Some(fight(
+                                a.name,
+                                d.name,
+                                a.top,
+                                d.bottom,
+                                board,
+                                attacking_player,
+                            )),
+                            (n.0, n.1),
+                        );
+                    }
+                    Direction::Right => {
+                        return (
+                            Some(fight(
+                                a.name,
+                                d.name,
+                                a.right,
+                                d.left,
+                                board,
+                                attacking_player,
+                            )),
+                            (n.0, n.1),
+                        );
+                    }
+                    Direction::Bottom => {
+                        return (
+                            Some(fight(
+                                a.name,
+                                d.name,
+                                a.bottom,
+                                d.top,
+                                board,
+                                attacking_player,
+                            )),
+                            (n.0, n.1),
+                        );
+                    }
+                    Direction::Left => {
+                        return (
+                            Some(fight(
+                                a.name,
+                                d.name,
+                                a.left,
+                                d.right,
+                                board,
+                                attacking_player,
+                            )),
+                            (n.0, n.1),
+                        );
                     }
                 }
             }
@@ -583,7 +586,17 @@ impl Card {
             board: &mut [[Option<Card>; 5]; 4],
             same_chain: bool,
         ) {
-            //println!("Handling a {:?} @ {}, {} vs {}, {} with same_count = {} & same_chain = {}", result, position.0, position.1, neighbour_position.0, neighbour_position.1, same, same_chain);
+            println!(
+                "Handling a {:?} @ {}, {} vs {}, {} with same_count = {} & same_chain = {}",
+                result,
+                position.0 + 1,
+                position.1 + 1,
+                neighbour_position.0 + 1,
+                neighbour_position.1 + 1,
+                same,
+                same_chain
+            );
+
             match result {
                 FightResult::Win => {
                     // capture neighbour when the battle is won
@@ -612,7 +625,13 @@ impl Card {
                 .as_ref()
                 .unwrap()
                 .player;
-            // capture defender
+
+            // capture defender if it is not owned by the attacker already
+            if board[defender_position.0][defender_position.1]
+                .as_ref()
+                .unwrap()
+                .player
+                != attacking_player
             {
                 let defender = board[defender_position.0][defender_position.1]
                     .as_mut()
@@ -629,15 +648,14 @@ impl Card {
                     Card::play(board, defender_position.0, defender_position.1, same_chain);
                 }
             }
+
             // update attacker
-            {
-                let attacker = board[attacker_position.0][attacker_position.1]
-                    .as_mut()
-                    .unwrap();
-                // Ravager gets an upgrade upon capturing
-                if attacker.name == Unit::Ravager {
-                    attacker.upgrade(1);
-                }
+            let attacker = board[attacker_position.0][attacker_position.1]
+                .as_mut()
+                .unwrap();
+            // Ravager gets an upgrade upon capturing
+            if attacker.name == Unit::Ravager {
+                attacker.upgrade(1);
             }
         }
 
@@ -655,16 +673,16 @@ impl Card {
         // if this card was not captured by Same Mechanic, count sames
         if !same_chain {
             if top_battle.0.is_some() && top_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1
+                same_count += 1;
             }
             if right_battle.0.is_some() && right_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1
+                same_count += 1;
             }
             if bottom_battle.0.is_some() && bottom_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1
+                same_count += 1;
             }
             if left_battle.0.is_some() && left_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1
+                same_count += 1;
             }
         }
 
@@ -829,13 +847,13 @@ fn main() {
         let mut player_move = String::new();
         input!(player_move, "Invalid move input!");
         let player_move = player_move.trim();
-        
+
         // swap decks
         if player_move == "swap" {
             swap(&mut deck1, &mut deck2);
             continue;
-        } 
-        // ai should play        
+        }
+        // ai should play
         else if player_move.is_empty() {
             let ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
 
