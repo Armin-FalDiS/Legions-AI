@@ -1,7 +1,7 @@
 use std::{
     cmp::{max, min, PartialEq},
     io::{stdin, stdout, Write},
-    panic,
+    mem, panic,
 };
 
 macro_rules! flush {
@@ -77,16 +77,16 @@ impl Card {
     }
 
     // maps unit type to card values array
-    fn get_values(unit: Unit) -> [[u8; 4]; 4] {
+    fn get_values(unit: Unit) -> [u8; 4] {
         match unit {
-            Unit::Warden => [[6, 6, 4, 4], [4, 6, 6, 4], [4, 4, 6, 6], [6, 4, 4, 6]],
-            Unit::Siren => [[7, 5, 4, 4], [4, 7, 5, 4], [4, 4, 7, 5], [5, 4, 4, 7]],
-            Unit::Keeper => [[9, 5, 1, 5], [5, 9, 5, 1], [1, 5, 9, 5], [5, 1, 5, 9]],
-            Unit::Saboteur => [[6, 5, 4, 5], [5, 6, 5, 4], [4, 5, 6, 5], [5, 4, 5, 6]],
-            Unit::Swarm => [[7, 3, 3, 3], [3, 7, 3, 3], [3, 3, 7, 3], [3, 3, 3, 7]],
-            Unit::Slayer => [[1, 6, 7, 6], [6, 1, 6, 7], [7, 6, 1, 6], [6, 7, 6, 1]],
-            Unit::Titan => [[7, 3, 6, 4], [4, 7, 3, 6], [6, 4, 7, 3], [3, 6, 4, 7]],
-            Unit::Ravager => [[8, 2, 6, 4], [4, 8, 2, 6], [6, 4, 8, 2], [2, 6, 4, 8]],
+            Unit::Warden => [6, 6, 4, 4],
+            Unit::Siren => [7, 4, 4, 5],
+            Unit::Keeper => [9, 5, 1, 5],
+            Unit::Saboteur => [6, 5, 4, 5],
+            Unit::Swarm => [7, 3, 3, 3],
+            Unit::Slayer => [1, 6, 7, 6],
+            Unit::Titan => [7, 4, 6, 3],
+            Unit::Ravager => [8, 4, 6, 2],
         }
     }
 
@@ -94,15 +94,31 @@ impl Card {
     fn add_to_deck(deck: &mut Vec<Card>, card: Unit, player: u8) {
         let values = Card::get_values(card);
 
-        for i in values {
-            deck.push(Card {
-                name: card,
-                top: i[0],
-                right: i[1],
-                bottom: i[2],
-                left: i[3],
-                player,
-            });
+        for i in 0..4 {
+            if player == 1 {
+                deck.push(Card {
+                    name: card,
+                    top: values[(0 + (4 - i)) % 4],
+                    right: values[(1 + (4 - i)) % 4],
+                    bottom: values[(2 + (4 - i)) % 4],
+                    left: values[(3 + (4 - i)) % 4],
+                    player,
+                });
+            } else {
+                // player 2 uses mirrored cards
+                let mut card = Card {
+                    name: card,
+                    top: values[(0 + i) % 4],
+                    right: values[(1 + i) % 4],
+                    bottom: values[(2 + i) % 4],
+                    left: values[(3 + i) % 4],
+                    player,
+                };
+
+                mem::swap(&mut card.left, &mut card.right);
+
+                deck.push(card);
+            }
         }
     }
 
@@ -272,30 +288,22 @@ impl Card {
                 // top neighbour
                 if y > 0 && board[y - 1][x].is_some() {
                     let card = board[y - 1][x].as_mut().unwrap();
-                    let t = card.top;
-                    card.top = card.bottom;
-                    card.bottom = t;
+                    mem::swap(&mut card.top, &mut card.bottom);
                 }
                 // bottom neighbour
                 else if y < 3 && board[y + 1][x].is_some() {
                     let card = board[y + 1][x].as_mut().unwrap();
-                    let t = card.top;
-                    card.top = card.bottom;
-                    card.bottom = t;
+                    mem::swap(&mut card.bottom, &mut card.top);
                 }
                 // left neighbour
                 else if x > 0 && board[y][x - 1].is_some() {
                     let card = board[y][x - 1].as_mut().unwrap();
-                    let l = card.left;
-                    card.left = card.right;
-                    card.right = l;
+                    mem::swap(&mut card.left, &mut card.right);
                 }
                 // right neighbour
                 else if x < 4 && board[y][x + 1].is_some() {
                     let card = board[y][x + 1].as_mut().unwrap();
-                    let l = card.left;
-                    card.left = card.right;
-                    card.right = l;
+                    mem::swap(&mut card.right, &mut card.left);
                 }
             }
             // Others do nothing at this stage
@@ -545,9 +553,7 @@ impl Card {
             match attacker {
                 // Slayer uses swapped attack values
                 Unit::Slayer => {
-                    let t = defense_value;
-                    defense_value = attack_value;
-                    attack_value = t;
+                    mem::swap(&mut defense_value, &mut &mut attack_value);
                 }
                 // Swarm gets ally bonus
                 Unit::Swarm => {
