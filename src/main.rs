@@ -1218,9 +1218,10 @@ fn ai(
     // determines maximum depth of minimax algorithm
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
-            0..=7 => 5,
-            8..=10 => 4,
-            _ => 3,
+            0..=8 => 8,
+            9..=10 => 5,
+            11..=12 => 4,
+            _ => 3
         }
     };
 
@@ -1294,7 +1295,7 @@ fn ai(
     }
 
     if (player == 1 && best_score == 120) || (player == 2 && best_score == -120) {
-        println!("\n  Omae wa mou shinderu");
+        println!("\n  Omae wa mou shindeiru");
     }
 
     return moves[best_move];
