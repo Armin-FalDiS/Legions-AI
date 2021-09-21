@@ -1,8 +1,4 @@
-use std::{
-    cmp::{max, min, PartialEq},
-    io::{stdin, stdout, Write},
-    mem, panic,
-};
+use std::{cmp::{max, min, PartialEq}, io::{stdin, stdout, Write}, mem::{self, swap}, panic};
 
 macro_rules! flush {
     () => {
@@ -833,9 +829,14 @@ fn main() {
         let mut player_move = String::new();
         input!(player_move, "Invalid move input!");
         let player_move = player_move.trim();
-
-        // ai should play
-        if player_move.is_empty() {
+        
+        // swap decks
+        if player_move == "swap" {
+            swap(&mut deck1, &mut deck2);
+            continue;
+        } 
+        // ai should play        
+        else if player_move.is_empty() {
             let ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
 
             place_card(
