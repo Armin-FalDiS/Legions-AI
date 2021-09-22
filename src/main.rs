@@ -29,7 +29,7 @@ pub enum Unit {
     Titan,
     Slayer,
     Swarm,
-    Lancer
+    Lancer,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -89,7 +89,7 @@ impl Card {
             Unit::Slayer => [1, 6, 7, 6],
             Unit::Titan => [7, 4, 6, 3],
             Unit::Ravager => [8, 4, 6, 2],
-            Unit::Lancer => [6, 4, 6, 4]
+            Unit::Lancer => [6, 4, 6, 4],
         }
     }
 
@@ -374,7 +374,7 @@ impl Card {
             board: &mut [[Option<Card>; 5]; 4],
             y: usize,
             x: usize,
-            direction: Direction
+            direction: Direction,
         ) -> (Option<FightResult>, Position) {
             // determine the attacker
             let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
@@ -476,6 +476,7 @@ impl Card {
                                 d.bottom,
                                 board,
                                 attacking_player,
+                                d.player,
                             )),
                             (n.0, n.1),
                         );
@@ -489,6 +490,7 @@ impl Card {
                                 d.left,
                                 board,
                                 attacking_player,
+                                d.player,
                             )),
                             (n.0, n.1),
                         );
@@ -502,6 +504,7 @@ impl Card {
                                 d.top,
                                 board,
                                 attacking_player,
+                                d.player,
                             )),
                             (n.0, n.1),
                         );
@@ -515,6 +518,7 @@ impl Card {
                                 d.right,
                                 board,
                                 attacking_player,
+                                d.player,
                             )),
                             (n.0, n.1),
                         );
@@ -534,13 +538,16 @@ impl Card {
             mut defense_value: u8,
             board: &[[Option<Card>; 5]; 4],
             attacking_player: u8,
+            defending_player: u8,
         ) -> FightResult {
             match defender {
-                // Warden has a defense bonus
+                // Warden has a defense bonus ONLY against enemies
                 Unit::Warden => {
-                    defense_value += 1;
+                    if attacking_player != defending_player {
+                        defense_value += 1;
+                    }
                 }
-                // Swarm gets a bonus
+                // Swarm gets ally bonus
                 Unit::Swarm => {
                     let defending_player = (attacking_player % 2) + 1;
                     defense_value = min(
@@ -554,7 +561,7 @@ impl Card {
             match attacker {
                 // Slayer uses swapped attack values
                 Unit::Slayer => {
-                    mem::swap(&mut defense_value, &mut &mut attack_value);
+                    mem::swap(&mut defense_value, &mut attack_value);
                 }
                 // Swarm gets ally bonus
                 Unit::Swarm => {
@@ -588,7 +595,7 @@ impl Card {
             board: &mut [[Option<Card>; 5]; 4],
             combo: bool,
             direction: Direction,
-            pierce: bool
+            pierce: bool,
         ) {
             // println!(
             //     "Handling a {:?} @ {}, {} vs {}, {} towards {:?} with same_count = {}, combo = {}, pierce = {}",
@@ -607,20 +614,35 @@ impl Card {
                     // capture neighbour when the battle is won
                     capture_event(neighbour_position, position, board, combo);
                     // Lancer has pierce ability
-                    if !pierce && board[position.0][position.1].as_ref().unwrap().name == Unit::Lancer {
+                    if !pierce
+                        && board[position.0][position.1].as_ref().unwrap().name == Unit::Lancer
+                    {
                         // pierce attacks neighbour's neighbour
                         // we swap places with neighbour to fight the desired card
-                        let temp_neighbour = board[neighbour_position.0][neighbour_position.1].take();
-                        board[neighbour_position.0][neighbour_position.1] = board[position.0][position.1].take();
+                        let temp_neighbour =
+                            board[neighbour_position.0][neighbour_position.1].take();
+                        board[neighbour_position.0][neighbour_position.1] =
+                            board[position.0][position.1].take();
                         // commence battle at the neighbour's position
-                        let battle_result = battle(board, neighbour_position.0, neighbour_position.1, direction);
+                        let battle_result =
+                            battle(board, neighbour_position.0, neighbour_position.1, direction);
                         // check if there was a battle
                         if battle_result.0.is_some() {
                             // handle the result
-                            handle_result(battle_result.0.unwrap(), 0, neighbour_position, battle_result.1, board, combo, direction, true);
+                            handle_result(
+                                battle_result.0.unwrap(),
+                                0,
+                                neighbour_position,
+                                battle_result.1,
+                                board,
+                                combo,
+                                direction,
+                                true,
+                            );
                         }
                         // now put the cards back into their original position
-                        board[position.0][position.1] = board[neighbour_position.0][neighbour_position.1].take();
+                        board[position.0][position.1] =
+                            board[neighbour_position.0][neighbour_position.1].take();
                         board[neighbour_position.0][neighbour_position.1] = temp_neighbour;
                     }
                 }
@@ -718,7 +740,7 @@ impl Card {
                 board,
                 combo,
                 Direction::Top,
-                false
+                false,
             );
         }
         // proccess result of right battle
@@ -731,7 +753,7 @@ impl Card {
                 board,
                 combo,
                 Direction::Right,
-                false
+                false,
             );
         }
         // proccess result of bottom battle
@@ -744,7 +766,7 @@ impl Card {
                 board,
                 combo,
                 Direction::Bottom,
-                false
+                false,
             );
         }
         // proccess result of left battle
@@ -757,7 +779,7 @@ impl Card {
                 board,
                 combo,
                 Direction::Left,
-                false
+                false,
             );
         }
     }
@@ -1254,7 +1276,7 @@ fn ai(
             0..=8 => 8,
             9..=10 => 5,
             11..=12 => 4,
-            _ => 3
+            _ => 3,
         }
     };
 
