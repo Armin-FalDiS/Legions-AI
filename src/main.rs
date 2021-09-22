@@ -22,13 +22,14 @@ type Position = (usize, usize);
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Unit {
     Warden,
-    Siren,
     Keeper,
+    Siren,
     Saboteur,
-    Swarm,
-    Slayer,
-    Titan,
     Ravager,
+    Titan,
+    Slayer,
+    Swarm,
+    Lancer
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -88,6 +89,7 @@ impl Card {
             Unit::Slayer => [1, 6, 7, 6],
             Unit::Titan => [7, 4, 6, 3],
             Unit::Ravager => [8, 4, 6, 2],
+            Unit::Lancer => [6, 4, 6, 4]
         }
     }
 
@@ -358,7 +360,7 @@ impl Card {
     }
 
     // play event that need to be run when the card is already placed on the board
-    fn play(board: &mut [[Option<Card>; 5]; 4], y: usize, x: usize, same_chain: bool) {
+    fn play(board: &mut [[Option<Card>; 5]; 4], y: usize, x: usize, combo: bool) {
         // result of the fight between two cards
         #[derive(Clone, Copy, PartialEq, Debug)]
         enum FightResult {
@@ -372,7 +374,7 @@ impl Card {
             board: &mut [[Option<Card>; 5]; 4],
             y: usize,
             x: usize,
-            direction: Direction,
+            direction: Direction
         ) -> (Option<FightResult>, Position) {
             // determine the attacker
             let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
@@ -584,22 +586,43 @@ impl Card {
             position: Position,
             neighbour_position: Position,
             board: &mut [[Option<Card>; 5]; 4],
-            same_chain: bool,
+            combo: bool,
+            direction: Direction,
+            pierce: bool
         ) {
             // println!(
-            //     "Handling a {:?} @ {}, {} vs {}, {} with same_count = {} & same_chain = {}",
+            //     "Handling a {:?} @ {}, {} vs {}, {} towards {:?} with same_count = {}, combo = {}, pierce = {}",
             //     result,
             //     position.0 + 1,
             //     position.1 + 1,
             //     neighbour_position.0 + 1,
             //     neighbour_position.1 + 1,
+            //     direction,
             //     same,
-            //     same_chain
+            //     combo,
+            //     pierce
             // );
             match result {
                 FightResult::Win => {
                     // capture neighbour when the battle is won
-                    capture_event(neighbour_position, position, board, same_chain);
+                    capture_event(neighbour_position, position, board, combo);
+                    // Lancer has pierce ability
+                    if !pierce && board[position.0][position.1].as_ref().unwrap().name == Unit::Lancer {
+                        // pierce attacks neighbour's neighbour
+                        // we swap places with neighbour to fight the desired card
+                        let temp_neighbour = board[neighbour_position.0][neighbour_position.1].take();
+                        board[neighbour_position.0][neighbour_position.1] = board[position.0][position.1].take();
+                        // commence battle at the neighbour's position
+                        let battle_result = battle(board, neighbour_position.0, neighbour_position.1, direction);
+                        // check if there was a battle
+                        if battle_result.0.is_some() {
+                            // handle the result
+                            handle_result(battle_result.0.unwrap(), 0, neighbour_position, battle_result.1, board, combo, direction, true);
+                        }
+                        // now put the cards back into their original position
+                        board[position.0][position.1] = board[neighbour_position.0][neighbour_position.1].take();
+                        board[neighbour_position.0][neighbour_position.1] = temp_neighbour;
+                    }
                 }
                 FightResult::Tie => {
                     // if more than one neighbours have same values, it's a valid capture
@@ -617,7 +640,7 @@ impl Card {
             defender_position: Position,
             attacker_position: Position,
             board: &mut [[Option<Card>; 5]; 4],
-            same_chain: bool,
+            combo: bool,
         ) {
             // determine the attacking player
             let attacking_player = board[attacker_position.0][attacker_position.1]
@@ -643,8 +666,8 @@ impl Card {
                 }
 
                 // if this card was captures through Same mechanic, it gets played by it's new owner
-                if same_chain {
-                    Card::play(board, defender_position.0, defender_position.1, same_chain);
+                if combo {
+                    Card::play(board, defender_position.0, defender_position.1, combo);
                 }
             }
 
@@ -670,7 +693,7 @@ impl Card {
         let mut same_count: u8 = 0;
 
         // if this card was not captured by Same Mechanic, count sames
-        if !same_chain {
+        if !combo {
             if top_battle.0.is_some() && top_battle.0.unwrap() == FightResult::Tie {
                 same_count += 1;
             }
@@ -693,7 +716,9 @@ impl Card {
                 (y, x),
                 top_battle.1,
                 board,
-                same_chain,
+                combo,
+                Direction::Top,
+                false
             );
         }
         // proccess result of right battle
@@ -704,7 +729,9 @@ impl Card {
                 (y, x),
                 right_battle.1,
                 board,
-                same_chain,
+                combo,
+                Direction::Right,
+                false
             );
         }
         // proccess result of bottom battle
@@ -715,7 +742,9 @@ impl Card {
                 (y, x),
                 bottom_battle.1,
                 board,
-                same_chain,
+                combo,
+                Direction::Bottom,
+                false
             );
         }
         // proccess result of left battle
@@ -726,7 +755,9 @@ impl Card {
                 (y, x),
                 left_battle.1,
                 board,
-                same_chain,
+                combo,
+                Direction::Left,
+                false
             );
         }
     }
@@ -741,13 +772,14 @@ fn main() {
     print!(
         "
     1\tWarden
-    2\tSiren
-    3\tKeeper
+    2\tKeeper
+    3\tSiren
     4\tSaboteur
-    5\tSwarm
-    6\tSlayer
-    7\tTitan
-    8\tRavager\n
+    5\tRavager
+    6\tTitan
+    7\tSlayer
+    8\tSwarm
+    9\tLancer\n
     Enter players deck unit types (player1 player1 player2 player2): "
     );
     flush!();
@@ -766,13 +798,14 @@ fn main() {
         // map input to determine card unit type
         let unit: Unit = match d {
             "1" => Unit::Warden,
-            "2" => Unit::Siren,
-            "3" => Unit::Keeper,
+            "2" => Unit::Keeper,
+            "3" => Unit::Siren,
             "4" => Unit::Saboteur,
-            "5" => Unit::Swarm,
-            "6" => Unit::Slayer,
-            "7" => Unit::Titan,
-            "8" => Unit::Ravager,
+            "5" => Unit::Ravager,
+            "6" => Unit::Titan,
+            "7" => Unit::Slayer,
+            "8" => Unit::Swarm,
+            "9" => Unit::Lancer,
             _ => panic!("Invalid deck digit!"),
         };
 
