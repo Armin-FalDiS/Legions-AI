@@ -294,17 +294,17 @@ impl Card {
                     mem::swap(&mut card.top, &mut card.bottom);
                 }
                 // bottom neighbour
-                else if y < 3 && board[y + 1][x].is_some() {
+                if y < 3 && board[y + 1][x].is_some() {
                     let card = board[y + 1][x].as_mut().unwrap();
                     mem::swap(&mut card.bottom, &mut card.top);
                 }
                 // left neighbour
-                else if x > 0 && board[y][x - 1].is_some() {
+                if x > 0 && board[y][x - 1].is_some() {
                     let card = board[y][x - 1].as_mut().unwrap();
                     mem::swap(&mut card.left, &mut card.right);
                 }
                 // right neighbour
-                else if x < 4 && board[y][x + 1].is_some() {
+                if x < 4 && board[y][x + 1].is_some() {
                     let card = board[y][x + 1].as_mut().unwrap();
                     mem::swap(&mut card.right, &mut card.left);
                 }
