@@ -921,9 +921,15 @@ fn main() {
                 &mut bombs,
             );
 
+            let card = board[ai_move.1][ai_move.2].as_ref().unwrap();
             println!(
-                "\nAI placed card #{} on {}, {}\n",
+                "\nAI placed card #{}, a {:?}({}{}{}{}) on {}, {}\n",
                 ai_move.0 + 1,
+                card.name,
+                card.top,
+                card.right,
+                card.bottom,
+                card.left,
                 ai_move.1 + 1,
                 ai_move.2 + 1
             );
