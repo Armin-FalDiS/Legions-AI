@@ -207,7 +207,7 @@ fn main() {
             prev_state = Some((copy_board(&board), bombs.clone(), player_move.0, prev_card));
 
             // fetch neighbours of this move
-            let neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.0, card);
+            let neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.1, card);
 
             // if we can't place the card, prompt for move again
             if !Card::place_card(

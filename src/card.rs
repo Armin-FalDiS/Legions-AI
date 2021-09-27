@@ -27,6 +27,7 @@ pub enum Unit {
     Lancer,
 }
 
+#[derive(Debug)]
 pub struct Card {
     pub name: Unit,
     pub top: u8,
@@ -275,7 +276,6 @@ impl Card {
                             }
                         }
                     };
-
                     if let Some(np) = n {
                         return Some((np, x));
                     }
@@ -763,6 +763,8 @@ impl Card {
             Some(n) => n,
             None => Card::get_neighbours(board, y, x, board[y][x].as_ref().unwrap().name),
         };
+
+        // println!("All the neighbours ==> {:#?}", neighbours);
 
         // handle the battle with top neighbour
         let top_battle = match neighbours[0] {
