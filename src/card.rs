@@ -256,7 +256,7 @@ impl Card {
         direction: Direction,
         y: usize,
         x: usize,
-        card: Unit
+        card: Unit,
     ) -> Option<Position> {
         match direction {
             Direction::Top => {
@@ -268,7 +268,11 @@ impl Card {
                         }
                         // Others are melee
                         _ => {
-                            Some(y - 1)
+                            if board[y - 1][x].is_some() {
+                                Some(y - 1)
+                            } else {
+                                None
+                            }
                         }
                     };
 
@@ -288,7 +292,11 @@ impl Card {
                         }
                         // Others are melee
                         _ => {
-                            Some(x + 1)
+                            if board[y][x + 1].is_some() {
+                                Some(x + 1)
+                            } else {
+                                None
+                            }
                         }
                     };
 
@@ -308,7 +316,11 @@ impl Card {
                         }
                         // Others are melee
                         _ => {
-                            Some(y + 1)
+                            if board[y + 1][x].is_some() {
+                                Some(y + 1)
+                            } else {
+                                None
+                            }
                         }
                     };
 
@@ -328,7 +340,11 @@ impl Card {
                         }
                         // Others are melee
                         _ => {
-                            Some(x - 1)
+                            if board[y][x - 1].is_some() {
+                                Some(x - 1)
+                            } else {
+                                None
+                            }
                         }
                     };
 
@@ -347,7 +363,7 @@ impl Card {
         board: &[[Option<Card>; 5]; 4],
         y: usize,
         x: usize,
-        card: Unit
+        card: Unit,
     ) -> [Option<Position>; 4] {
         let mut neighbours: [Option<Position>; 4] = Default::default();
         let dirs = [

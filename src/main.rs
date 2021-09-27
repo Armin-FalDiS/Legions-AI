@@ -1,6 +1,5 @@
 use std::{
     io::{stdin, stdout, Write},
-    mem::swap,
     panic,
 };
 
@@ -79,6 +78,9 @@ fn main() {
     // keep track of turns
     let mut turn: u8 = 0;
 
+    // keep track of last move (board, bombs, card_ind, card)
+    let mut prev_state: Option<([[Option<Card>; 5]; 4], [[u8; 5]; 4], usize, Card)> = Default::default();
+
     // start of the game
     loop {
         println!();
@@ -129,14 +131,53 @@ fn main() {
         input!(player_move, "Invalid move input!");
         let player_move = player_move.trim();
 
-        // swap decks
-        if player_move == "swap" {
-            swap(&mut deck1, &mut deck2);
-            continue;
+        // undo move
+        if player_move == "b" && turn > 0 {
+            if prev_state.is_some() {
+                println!("\nUndoing move ...\n");
+                let state = prev_state.take().unwrap();
+                board = state.0;
+                bombs = state.1;
+                // previous turn was player1's
+                if current_turn == 2 {
+                    deck1.insert(state.2, state.3);
+                }
+                // previous turn was player2's 
+                else {
+                    deck2.insert(state.2, state.3);
+                }
+
+                turn -= 1;
+                continue;
+            }
         }
         // ai should play
         else if player_move.is_empty() {
             let ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
+            
+            // fetch a copy of the played card
+            let prev_card = {
+                if current_turn == 1 {
+                    Card::copy(&deck1[ai_move.0])
+                } else {
+                    Card::copy(&deck2[ai_move.0])
+                }
+            };
+
+            // announce AI move
+            println!(
+                "\nAI placed card a {:?}({}{}{}{}) on {}, {}\n",
+                prev_card.name,
+                prev_card.top,
+                prev_card.right,
+                prev_card.bottom,
+                prev_card.left,
+                ai_move.1 + 1,
+                ai_move.2 + 1
+            );
+
+            // save prev state
+            prev_state = Some((copy_board(&board), bombs.clone(), ai_move.0, prev_card));
 
             Card::place_card(
                 &mut board,
@@ -148,30 +189,22 @@ fn main() {
                 &mut bombs,
                 ai_move.3,
             );
-
-            let card = board[ai_move.1][ai_move.2].as_ref().unwrap();
-            println!(
-                "\nAI placed card a {:?}({}{}{}{}) on {}, {}\n",
-                card.name,
-                card.top,
-                card.right,
-                card.bottom,
-                card.left,
-                ai_move.1 + 1,
-                ai_move.2 + 1
-            );
         }
         // player should move so apply player move on the board
         else {
             // determine player's card and move
             let player_move = parse_player_move(player_move);
 
-            // fetch unit of played card
-            let card = match current_turn {
-                1 => deck1[player_move.0].name,
-                2 => deck2[player_move.0].name,
-                _ => panic!("Invalid current turn !")
+            // save prev state
+            let prev_card = {
+                if current_turn == 1 {
+                    Card::copy(&deck1[player_move.0])
+                } else {
+                    Card::copy(&deck2[player_move.0])
+                }
             };
+            let card = prev_card.name;
+            prev_state = Some((copy_board(&board), bombs.clone(), player_move.0, prev_card));
 
             // fetch neighbours of this move
             let neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.0, card);

@@ -29,14 +29,19 @@ fn available_moves(
 
                     // iterate through neighbours to set priority when there are any oppenent card neighbours for that cell
                     for i in 0..4 {
+                        // if there is a valid neighbouring cell
                         if let Some(n) = neighbours[i] {
-                            if board[n.0][n.1].as_ref().unwrap().player != player {
-                                has_priority = true;
-                                break;
+                            // if there is a card in that cell
+                            if let Some(neighbour) = board[n.0][n.1].as_ref() {
+                                // if that card belongs to the opponent
+                                if neighbour.player != player {
+                                    has_priority = true;
+                                    break;
+                                }
                             }
                         }
                     }
-                        
+
                     // if move has priority, add it to the beginning of the list
                     if has_priority {
                         moves.insert(0, (d, i, j, neighbours));
@@ -93,8 +98,7 @@ pub fn ai(
         let mov = moves[m];
 
         // make a copy of the board
-        let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
-        copy_board(&board, &mut temp_board);
+        let temp_board: [[Option<Card>; 5]; 4] = copy_board(&board);
 
         // save card
         let temp_card = {
@@ -108,7 +112,16 @@ pub fn ai(
         let temp_bombs = bombs.clone();
 
         // place the card down
-        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs, mov.3);
+        Card::place_card(
+            board,
+            deck1,
+            deck2,
+            mov.0,
+            (mov.1, mov.2),
+            player,
+            bombs,
+            mov.3,
+        );
 
         // maximising player
         if player == 1 {
@@ -203,8 +216,7 @@ fn minimax(
         let mov = moves[m];
 
         // make a copy of the board
-        let mut temp_board: [[Option<Card>; 5]; 4] = Default::default();
-        copy_board(&board, &mut temp_board);
+        let temp_board: [[Option<Card>; 5]; 4] = copy_board(&board);
 
         // save card
         let temp_card = {
@@ -218,7 +230,16 @@ fn minimax(
         // make a copy of the bombs
         let temp_bombs = bombs.clone();
 
-        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs, mov.3);
+        Card::place_card(
+            board,
+            deck1,
+            deck2,
+            mov.0,
+            (mov.1, mov.2),
+            player,
+            bombs,
+            mov.3,
+        );
 
         if player == 1 {
             best_score = max(

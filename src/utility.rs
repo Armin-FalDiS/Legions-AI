@@ -48,7 +48,8 @@ pub fn evaluation(board: &[[Option<Card>; 5]; 4]) -> i8 {
 }
 
 // copies the board from source to destination
-pub fn copy_board(src: &[[Option<Card>; 5]; 4], dst: &mut [[Option<Card>; 5]; 4]) {
+pub fn copy_board(src: &[[Option<Card>; 5]; 4]) -> [[Option<Card>; 5]; 4] {
+    let mut dst: [[Option<Card>; 5]; 4] = Default::default();
     for i in 0..4 {
         for j in 0..5 {
             if src[i][j].is_some() {
@@ -56,6 +57,7 @@ pub fn copy_board(src: &[[Option<Card>; 5]; 4], dst: &mut [[Option<Card>; 5]; 4]
             }
         }
     }
+    return dst;
 }
 
 // outputs board
