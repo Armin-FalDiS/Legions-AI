@@ -1,6 +1,7 @@
 use std::{
     cmp::{max, min},
     mem::swap,
+    ops::Range,
 };
 
 pub type Position = (usize, usize);
@@ -79,7 +80,7 @@ impl Card {
         }
     }
 
-    // adds a card stack (4 cards) to deck
+    // adds a card stack (4 cards) of the specified type to the deck
     pub fn add_to_deck(deck: &mut Vec<Card>, card: Unit, player: u8) {
         let values = Card::get_values(card);
 
@@ -111,8 +112,104 @@ impl Card {
         }
     }
 
-    // gets the first neighbour in specified direction
-    pub fn get_far_neighbour(
+    // pulls neighbours if the exist
+    pub fn pull(
+        board: &mut [[Option<Card>; 5]; 4],
+        position: Position,
+        neighbours: [Option<Position>; 4],
+        bombs: &mut [[u8; 5]; 4],
+    ) {
+        let (y, x) = position;
+        let directions = [
+            Direction::Top,
+            Direction::Right,
+            Direction::Bottom,
+            Direction::Left,
+        ];
+
+        for i in 0..4 {
+            // if neighbour exists
+            if let Some(neighbour) = neighbours[i] {
+                let (ny, nx) = neighbour;
+                let direction = directions[i];
+
+                // calculate damage of inbetween bombs
+                let mut damage: u8 = 0;
+                let iter: Range<usize> = match direction {
+                    Direction::Top => ny + 1..y,
+                    Direction::Right => x + 1..nx,
+                    Direction::Bottom => y + 1..ny,
+                    Direction::Left => nx + 1..x,
+                };
+                for i in iter {
+                    match direction {
+                        Direction::Top | Direction::Bottom => {
+                            damage += bombs[i][x];
+                            bombs[i][x] = 0;
+                        }
+                        Direction::Right | Direction::Left => {
+                            damage += bombs[y][i];
+                            bombs[y][i] = 0;
+                        }
+                    }
+                }
+
+                // fetch the card that needs to be pulled
+                let mut neighbour = board[ny][nx].take();
+
+                // apply damage
+                neighbour.as_mut().unwrap().downgrade(damage);
+
+                // relocate card
+                match direction {
+                    Direction::Top => board[y - 1][x] = neighbour,
+                    Direction::Right => board[y][x + 1] = neighbour,
+                    Direction::Bottom => board[y + 1][x] = neighbour,
+                    Direction::Left => board[y][x - 1] = neighbour,
+                }
+            }
+        }
+    }
+
+    // flip the facing value with the value of the other end
+    pub fn flip(board: &mut [[Option<Card>; 5]; 4], neighbours: [Option<Position>; 4]) {
+        for i in 0..4 {
+            if let Some(neighbour) = neighbours[i] {
+                let n = board[neighbour.0][neighbour.1].as_mut().unwrap();
+                match i {
+                    // top & bottom
+                    0 | 2 => swap(&mut n.top, &mut n.bottom),
+                    // left & right
+                    1 | 3 => swap(&mut n.right, &mut n.left),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // returns the count of player owned swarms
+    pub fn swarm_count(board: &[[Option<Card>; 5]; 4], player: u8) -> u8 {
+        let mut swarm: u8 = 0;
+        for i in 0..4 {
+            for j in 0..5 {
+                if board[i][j].is_some() {
+                    let card = board[i][j].as_ref().unwrap();
+                    if card.name == Unit::Swarm && card.player == player {
+                        swarm += 1;
+                    }
+                }
+            }
+        }
+        // swarm gets a bonus for each ally swarm except self
+        if swarm > 0 {
+            return swarm - 1;
+        } else {
+            return swarm;
+        }
+    }
+
+    // gets the first neighbour in specified direction (for Siren & Keeper)
+    fn get_far_neighbour(
         direction: Direction,
         board: &[[Option<Card>; 5]; 4],
         y: usize,
@@ -153,87 +250,118 @@ impl Card {
         return None;
     }
 
-    // pulls a card to the neighbouring cell
-    pub fn pull(
+    // returns neigbour with it's position
+    fn get_neighbour(
+        board: &[[Option<Card>; 5]; 4],
+        direction: Direction,
         y: usize,
         x: usize,
-        direction: Direction,
-        board: &mut [[Option<Card>; 5]; 4],
-        bombs: &mut [[u8; 5]; 4],
-    ) {
-        // fetch neighbour
-        let neighbour = Card::get_far_neighbour(direction, board, y, x);
+        card: Unit
+    ) -> Option<Position> {
+        match direction {
+            Direction::Top => {
+                if y > 0 {
+                    let n: Option<usize> = match card {
+                        // Keeper and Siren are ranged
+                        Unit::Keeper | Unit::Siren => {
+                            Card::get_far_neighbour(direction, board, y, x)
+                        }
+                        // Others are melee
+                        _ => {
+                            Some(y - 1)
+                        }
+                    };
 
-        // variable to track bomb damage when pulled
-        let mut damage: u8 = 0;
+                    if let Some(np) = n {
+                        return Some((np, x));
+                    }
+                }
 
-        // check if neighbour is adjecent
-        let is_adjacent: bool = {
-            if neighbour.is_none() {
-                false
-            } else {
-                let neighbour = *neighbour.as_ref().unwrap();
-                (direction == Direction::Top && neighbour == y - 1)
-                    || (direction == Direction::Right && neighbour == x + 1)
-                    || (direction == Direction::Bottom && neighbour == y + 1)
-                    || (direction == Direction::Left && neighbour == x - 1)
+                return None;
             }
-        };
+            Direction::Right => {
+                if x < 4 {
+                    let n: Option<usize> = match card {
+                        // Keeper and Siren are ranged
+                        Unit::Keeper | Unit::Siren => {
+                            Card::get_far_neighbour(direction, board, y, x)
+                        }
+                        // Others are melee
+                        _ => {
+                            Some(x + 1)
+                        }
+                    };
 
-        // if there exist a non adjacent neighbour
-        if neighbour.is_some() && !is_adjacent {
-            let neighbour = *neighbour.as_ref().unwrap();
-            let iter = {
-                match direction {
-                    Direction::Top => (neighbour + 1)..y,
-                    Direction::Right => (x + 1)..neighbour,
-                    Direction::Bottom => (y + 1)..neighbour,
-                    Direction::Left => (neighbour + 1)..x,
+                    if let Some(np) = n {
+                        return Some((y, np));
+                    }
                 }
-            };
 
-            // flag showing whether the direction is vertical
-            let dir_vertical: bool = {
-                match direction {
-                    Direction::Top | Direction::Bottom => true,
-                    Direction::Left | Direction::Right => false,
-                }
-            };
-
-            // handle bombs
-            for i in iter {
-                if dir_vertical {
-                    // increase damage
-                    damage += bombs[i][x];
-                    // detonate all bombs in path cell
-                    bombs[i][x] = 0;
-                } else {
-                    damage += bombs[y][i];
-                    bombs[y][i] = 0;
-                }
+                return None;
             }
+            Direction::Bottom => {
+                if y < 3 {
+                    let n: Option<usize> = match card {
+                        // Keeper and Siren are ranged
+                        Unit::Keeper | Unit::Siren => {
+                            Card::get_far_neighbour(direction, board, y, x)
+                        }
+                        // Others are melee
+                        _ => {
+                            Some(y + 1)
+                        }
+                    };
 
-            // apply damage and relocate card
-            if dir_vertical {
-                // apply damage to the card
-                board[neighbour][x].as_mut().unwrap().downgrade(damage);
-
-                // relocate the card to the neighbouring cell
-                if direction == Direction::Top {
-                    board[y - 1][x] = board[neighbour][x].take();
-                } else {
-                    board[y + 1][x] = board[neighbour][x].take();
+                    if let Some(np) = n {
+                        return Some((np, x));
+                    }
                 }
-            } else {
-                board[y][neighbour].as_mut().unwrap().downgrade(damage);
 
-                if direction == Direction::Right {
-                    board[y][x + 1] = board[y][neighbour].take();
-                } else {
-                    board[y][x - 1] = board[y][neighbour].take();
+                return None;
+            }
+            Direction::Left => {
+                if x > 0 {
+                    let n: Option<usize> = match card {
+                        // Keeper and Siren are ranged
+                        Unit::Keeper | Unit::Siren => {
+                            Card::get_far_neighbour(direction, board, y, x)
+                        }
+                        // Others are melee
+                        _ => {
+                            Some(x - 1)
+                        }
+                    };
+
+                    if let Some(np) = n {
+                        return Some((y, np));
+                    }
                 }
+
+                return None;
             }
         }
+    }
+
+    // returns Top, Right, Bottom, Left neighbours in an array
+    pub fn get_neighbours(
+        board: &[[Option<Card>; 5]; 4],
+        y: usize,
+        x: usize,
+        card: Unit
+    ) -> [Option<Position>; 4] {
+        let mut neighbours: [Option<Position>; 4] = Default::default();
+        let dirs = [
+            Direction::Top,
+            Direction::Right,
+            Direction::Bottom,
+            Direction::Left,
+        ];
+
+        for i in 0..4 {
+            neighbours[i] = Card::get_neighbour(board, dirs[i], y, x, card);
+        }
+
+        return neighbours;
     }
 
     // places a card out of the player's deck on to the board. returns success
@@ -245,6 +373,7 @@ impl Card {
         mov: Position,
         player: u8,
         bombs: &mut [[u8; 5]; 4],
+        neighbours: [Option<Position>; 4],
     ) -> bool {
         // determine the cell on the board
         let cell = &mut board[mov.0][mov.1];
@@ -270,9 +399,9 @@ impl Card {
                     *cell = Some(deck2.remove(card));
                 }
 
-                Card::placement(board, mov, bombs);
+                Card::placement(board, mov, bombs, neighbours);
 
-                Card::play(board, mov.0, mov.1, false);
+                Card::play(board, mov.0, mov.1, false, Some(neighbours));
 
                 return true;
             }
@@ -284,6 +413,7 @@ impl Card {
         board: &mut [[Option<Card>; 5]; 4],
         position: Position,
         bombs: &mut [[u8; 5]; 4],
+        neighbours: [Option<Position>; 4],
     ) {
         let y = position.0;
         let x = position.1;
@@ -310,37 +440,11 @@ impl Card {
             }
             // Siren pulls cards
             Unit::Siren => {
-                // pull top card
-                Card::pull(y, x, Direction::Top, board, bombs);
-                // pull right card
-                Card::pull(y, x, Direction::Right, board, bombs);
-                // pull bottom card
-                Card::pull(y, x, Direction::Bottom, board, bombs);
-                // pull left card
-                Card::pull(y, x, Direction::Left, board, bombs);
+                Card::pull(board, position, neighbours, bombs);
             }
             // Titan flips adjacent cards
             Unit::Titan => {
-                // top neighbour
-                if y > 0 && board[y - 1][x].is_some() {
-                    let card = board[y - 1][x].as_mut().unwrap();
-                    swap(&mut card.top, &mut card.bottom);
-                }
-                // bottom neighbour
-                if y < 3 && board[y + 1][x].is_some() {
-                    let card = board[y + 1][x].as_mut().unwrap();
-                    swap(&mut card.bottom, &mut card.top);
-                }
-                // left neighbour
-                if x > 0 && board[y][x - 1].is_some() {
-                    let card = board[y][x - 1].as_mut().unwrap();
-                    swap(&mut card.left, &mut card.right);
-                }
-                // right neighbour
-                if x < 4 && board[y][x + 1].is_some() {
-                    let card = board[y][x + 1].as_mut().unwrap();
-                    swap(&mut card.right, &mut card.left);
-                }
+                Card::flip(board, neighbours);
             }
             // Others do nothing at this stage
             _ => {}
@@ -371,29 +475,14 @@ impl Card {
         }
     }
 
-    // returns the count of player owned swarms
-    pub fn swarm_count(board: &[[Option<Card>; 5]; 4], player: u8) -> u8 {
-        let mut swarm: u8 = 0;
-        for i in 0..4 {
-            for j in 0..5 {
-                if board[i][j].is_some() {
-                    let card = board[i][j].as_ref().unwrap();
-                    if card.name == Unit::Swarm && card.player == player {
-                        swarm += 1;
-                    }
-                }
-            }
-        }
-        // swarm gets a bonus for each ally swarm except self
-        if swarm > 0 {
-            return swarm - 1;
-        } else {
-            return swarm;
-        }
-    }
-
     // play event that need to be run when the card is already placed on the board
-    pub fn play(board: &mut [[Option<Card>; 5]; 4], y: usize, x: usize, combo: bool) {
+    pub fn play(
+        board: &mut [[Option<Card>; 5]; 4],
+        y: usize,
+        x: usize,
+        combo: bool,
+        neighbours: Option<[Option<Position>; 4]>,
+    ) {
         // result of the fight between two cards
         #[derive(Clone, Copy, PartialEq, Debug)]
         enum FightResult {
@@ -402,165 +491,76 @@ impl Card {
             Lose,
         }
 
-        // handles battle with neighbour in specified direction and returns the result
+        // handles battle with specified neighbour and returns the result
         fn battle(
             board: &mut [[Option<Card>; 5]; 4],
-            y: usize,
-            x: usize,
+            position: Position,
+            neighbour_position: Position,
             direction: Direction,
-        ) -> (Option<FightResult>, Position) {
+        ) -> Option<FightResult> {
+            let (y, x) = position;
+            let (ny, nx) = neighbour_position;
             // determine the attacker
-            let attacking_player: u8 = { board[y][x].as_ref().unwrap().player };
-
-            // fetch neighbour
-            let neighbour_position: Option<Position> = {
-                let card = { board[y][x].as_ref().unwrap().name };
-                match direction {
-                    Direction::Top => {
-                        if y > 0 {
-                            if card == Unit::Keeper {
-                                let n = Card::get_far_neighbour(direction, board, y, x);
-                                if n.is_none() {
-                                    None
-                                } else {
-                                    Some((*n.as_ref().unwrap(), x))
-                                }
-                            } else {
-                                Some((y - 1, x))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    Direction::Right => {
-                        if x < 4 {
-                            if card == Unit::Keeper {
-                                let n = Card::get_far_neighbour(direction, board, y, x);
-                                if n.is_none() {
-                                    None
-                                } else {
-                                    Some((y, *n.as_ref().unwrap()))
-                                }
-                            } else {
-                                Some((y, x + 1))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    Direction::Bottom => {
-                        if y < 3 {
-                            if card == Unit::Keeper {
-                                let n = Card::get_far_neighbour(direction, board, y, x);
-                                if n.is_none() {
-                                    None
-                                } else {
-                                    Some((*n.as_ref().unwrap(), x))
-                                }
-                            } else {
-                                Some((y + 1, x))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    Direction::Left => {
-                        if x > 0 {
-                            if card == Unit::Keeper {
-                                let n = Card::get_far_neighbour(direction, board, y, x);
-                                if n.is_none() {
-                                    None
-                                } else {
-                                    Some((y, *n.as_ref().unwrap()))
-                                }
-                            } else {
-                                Some((y, x - 1))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                }
-            };
-            let neighbour = {
-                if neighbour_position.is_some() {
-                    let n = *neighbour_position.as_ref().unwrap();
-                    board[n.0][n.1].as_ref()
-                } else {
-                    None
-                }
-            };
+            let attacking_player: u8 = board[y][x].as_ref().unwrap().player;
+            let neighbour = board[ny][nx].as_ref();
 
             // if neighbour exists, check it
-            if neighbour.is_some() {
+            if let Some(neighbour) = neighbour {
                 // fetch attacker
                 let a = board[y][x].as_ref().unwrap();
                 // fetch defender
-                let d = neighbour.unwrap();
+                let d = neighbour;
 
-                let n = neighbour_position.unwrap();
                 match direction {
                     Direction::Top => {
-                        return (
-                            Some(fight(
-                                a.name,
-                                d.name,
-                                a.top,
-                                d.bottom,
-                                board,
-                                attacking_player,
-                                d.player,
-                            )),
-                            (n.0, n.1),
-                        );
+                        return Some(fight(
+                            a.name,
+                            d.name,
+                            a.top,
+                            d.bottom,
+                            board,
+                            attacking_player,
+                            d.player,
+                        ));
                     }
                     Direction::Right => {
-                        return (
-                            Some(fight(
-                                a.name,
-                                d.name,
-                                a.right,
-                                d.left,
-                                board,
-                                attacking_player,
-                                d.player,
-                            )),
-                            (n.0, n.1),
-                        );
+                        return Some(fight(
+                            a.name,
+                            d.name,
+                            a.right,
+                            d.left,
+                            board,
+                            attacking_player,
+                            d.player,
+                        ));
                     }
                     Direction::Bottom => {
-                        return (
-                            Some(fight(
-                                a.name,
-                                d.name,
-                                a.bottom,
-                                d.top,
-                                board,
-                                attacking_player,
-                                d.player,
-                            )),
-                            (n.0, n.1),
-                        );
+                        return Some(fight(
+                            a.name,
+                            d.name,
+                            a.bottom,
+                            d.top,
+                            board,
+                            attacking_player,
+                            d.player,
+                        ));
                     }
                     Direction::Left => {
-                        return (
-                            Some(fight(
-                                a.name,
-                                d.name,
-                                a.left,
-                                d.right,
-                                board,
-                                attacking_player,
-                                d.player,
-                            )),
-                            (n.0, n.1),
-                        );
+                        return Some(fight(
+                            a.name,
+                            d.name,
+                            a.left,
+                            d.right,
+                            board,
+                            attacking_player,
+                            d.player,
+                        ));
                     }
                 }
             }
 
             // if neighbour is empty or no fight was fought, return None
-            return (None, (99, 99));
+            return None;
         }
 
         // fight the opponent card and returns result
@@ -646,37 +646,43 @@ impl Card {
                 FightResult::Win => {
                     // capture neighbour when the battle is won
                     capture_event(neighbour_position, position, board, combo);
-                    // Lancer has pierce ability
-                    if !pierce
-                        && board[position.0][position.1].as_ref().unwrap().name == Unit::Lancer
-                    {
-                        // pierce attacks neighbour's neighbour
-                        // we swap places with neighbour to fight the desired card
-                        let temp_neighbour =
-                            board[neighbour_position.0][neighbour_position.1].take();
-                        board[neighbour_position.0][neighbour_position.1] =
-                            board[position.0][position.1].take();
-                        // commence battle at the neighbour's position
-                        let battle_result =
-                            battle(board, neighbour_position.0, neighbour_position.1, direction);
-                        // check if there was a battle
-                        if battle_result.0.is_some() {
-                            // handle the result
-                            handle_result(
-                                battle_result.0.unwrap(),
-                                0,
-                                neighbour_position,
-                                battle_result.1,
-                                board,
-                                combo,
-                                direction,
-                                true,
-                            );
+
+                    let (y, x) = position;
+                    let (ny, nx) = neighbour_position;
+
+                    // Lancer has pierce ability which attacks fallen neighbour's neighbour
+                    if !pierce && board[y][x].as_ref().unwrap().name == Unit::Lancer {
+                        // fetch defender (card to be pierced)
+                        let def = Card::get_neighbour(board, direction, ny, nx, Unit::Lancer);
+
+                        // if there is a card to pierce
+                        if let Some(d) = def {
+                            // swap lancer with it's defeated neighbour
+                            let temp_card = board[ny][nx].take();
+                            board[ny][nx] = board[y][x].take();
+
+                            // commence battle at the neighbour's position
+                            let battle_result = battle(board, neighbour_position, d, direction);
+
+                            // check if there was a battle
+                            if battle_result.is_some() {
+                                // handle the result
+                                handle_result(
+                                    battle_result.unwrap(),
+                                    0,
+                                    neighbour_position,
+                                    d,
+                                    board,
+                                    combo,
+                                    direction,
+                                    true,
+                                );
+                            }
+
+                            // now put the cards back into their original positions
+                            board[y][x] = board[ny][nx].take();
+                            board[ny][nx] = temp_card;
                         }
-                        // now put the cards back into their original position
-                        board[position.0][position.1] =
-                            board[neighbour_position.0][neighbour_position.1].take();
-                        board[neighbour_position.0][neighbour_position.1] = temp_neighbour;
                     }
                 }
                 FightResult::Tie => {
@@ -722,7 +728,7 @@ impl Card {
 
                 // if this card was captures through Same mechanic, it gets played by it's new owner
                 if combo {
-                    Card::play(board, defender_position.0, defender_position.1, combo);
+                    Card::play(board, defender_position.0, defender_position.1, combo, None);
                 }
             }
 
@@ -736,79 +742,104 @@ impl Card {
             }
         }
 
+        // fetch neighbours
+        let neighbours = match neighbours {
+            Some(n) => n,
+            None => Card::get_neighbours(board, y, x, board[y][x].as_ref().unwrap().name),
+        };
+
         // handle the battle with top neighbour
-        let top_battle = battle(board, y, x, Direction::Top);
+        let top_battle = match neighbours[0] {
+            Some(n) => battle(board, (y, x), n, Direction::Top),
+            None => None,
+        };
         // handle the battle with right neighbour
-        let right_battle = battle(board, y, x, Direction::Right);
+        let right_battle = match neighbours[1] {
+            Some(n) => battle(board, (y, x), n, Direction::Right),
+            None => None,
+        };
         // handle the battle with the bottom neighbour
-        let bottom_battle = battle(board, y, x, Direction::Bottom);
+        let bottom_battle = match neighbours[2] {
+            Some(n) => battle(board, (y, x), n, Direction::Bottom),
+            None => None,
+        };
         // handle the battle with the left neighbour
-        let left_battle = battle(board, y, x, Direction::Left);
+        let left_battle = match neighbours[3] {
+            Some(n) => battle(board, (y, x), n, Direction::Left),
+            None => None,
+        };
 
         let mut same_count: u8 = 0;
 
         // if this card was not captured by Same Mechanic, count sames
         if !combo {
-            if top_battle.0.is_some() && top_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1;
+            // fn to count Ties
+            fn count_same(same_count: &mut u8, fr: FightResult) {
+                if fr == FightResult::Tie {
+                    *same_count += 1;
+                }
             }
-            if right_battle.0.is_some() && right_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1;
+
+            if let Some(res) = top_battle {
+                count_same(&mut same_count, res);
             }
-            if bottom_battle.0.is_some() && bottom_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1;
+            if let Some(res) = right_battle {
+                count_same(&mut same_count, res);
             }
-            if left_battle.0.is_some() && left_battle.0.unwrap() == FightResult::Tie {
-                same_count += 1;
+            if let Some(res) = bottom_battle {
+                count_same(&mut same_count, res);
+            }
+            if let Some(res) = left_battle {
+                count_same(&mut same_count, res);
             }
         }
 
-        // proccess result of top battle
-        if top_battle.0.is_some() {
+        // handle result of top battle
+        if let Some(res) = top_battle {
             handle_result(
-                top_battle.0.unwrap(),
+                res,
                 same_count,
                 (y, x),
-                top_battle.1,
+                neighbours[0].unwrap(),
                 board,
                 combo,
                 Direction::Top,
                 false,
             );
         }
-        // proccess result of right battle
-        if right_battle.0.is_some() {
+        // handle result of right battle
+        if let Some(res) = right_battle {
             handle_result(
-                right_battle.0.unwrap(),
+                res,
                 same_count,
                 (y, x),
-                right_battle.1,
+                neighbours[1].unwrap(),
                 board,
                 combo,
                 Direction::Right,
                 false,
             );
         }
-        // proccess result of bottom battle
-        if bottom_battle.0.is_some() {
+        // handle result of bottom battle
+        if let Some(res) = bottom_battle {
             handle_result(
-                bottom_battle.0.unwrap(),
+                res,
                 same_count,
                 (y, x),
-                bottom_battle.1,
+                neighbours[2].unwrap(),
                 board,
                 combo,
                 Direction::Bottom,
                 false,
             );
         }
-        // proccess result of left battle
-        if left_battle.0.is_some() {
+        // handle result of left battle
+        if let Some(res) = left_battle {
             handle_result(
-                left_battle.0.unwrap(),
+                res,
                 same_count,
                 (y, x),
-                left_battle.1,
+                neighbours[3].unwrap(),
                 board,
                 combo,
                 Direction::Left,

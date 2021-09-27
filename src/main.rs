@@ -4,12 +4,12 @@ use std::{
     panic,
 };
 
-mod card;
 mod ai;
+mod card;
 mod utility;
 
-use card::*;
 use ai::ai;
+use card::*;
 use utility::*;
 
 fn main() {
@@ -146,6 +146,7 @@ fn main() {
                 (ai_move.1, ai_move.2),
                 current_turn,
                 &mut bombs,
+                ai_move.3,
             );
 
             let card = board[ai_move.1][ai_move.2].as_ref().unwrap();
@@ -164,6 +165,17 @@ fn main() {
         else {
             // determine player's card and move
             let player_move = parse_player_move(player_move);
+
+            // fetch unit of played card
+            let card = match current_turn {
+                1 => deck1[player_move.0].name,
+                2 => deck2[player_move.0].name,
+                _ => panic!("Invalid current turn !")
+            };
+
+            // fetch neighbours of this move
+            let neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.0, card);
+
             // if we can't place the card, prompt for move again
             if !Card::place_card(
                 &mut board,
@@ -173,6 +185,7 @@ fn main() {
                 player_move.1,
                 current_turn,
                 &mut bombs,
+                neighbours,
             ) {
                 continue;
             }

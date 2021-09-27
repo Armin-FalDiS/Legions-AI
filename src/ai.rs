@@ -6,120 +6,44 @@ use crate::utility::*;
 // returns a vector of (card, row, column) of available moves
 fn available_moves(
     board: &[[Option<Card>; 5]; 4],
-    bombs: &[[u8; 5]; 4],
+    bombs: &mut [[u8; 5]; 4],
     deck: &Vec<Card>,
     player: u8,
-) -> Vec<(usize, usize, usize)> {
-    let mut moves: Vec<(usize, usize, usize)> = Default::default();
+) -> Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])> {
+    let mut moves: Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])> = Default::default();
 
     // iterate through the boards for each card in deck
     for i in 0..4 {
         for j in 0..5 {
             for d in 0..deck.len() {
                 if board[i][j].is_none() {
+                    // fetch neighbours
+                    let neighbours = Card::get_neighbours(board, i, j, deck[d].name);
+
                     // flag to determine whether the move has priority
-                    let has_priority: bool = {
-                        // if there are bombs in that cell, try to avoid them
-                        if bombs[i][j] > 0 {
-                            false
-                        } else {
-                            match deck[d].name {
-                                // Keeper and Siren affect cards at range so having a far neighbour could be good
-                                Unit::Keeper | Unit::Siren => {
-                                    // fetch top neighbour
-                                    let top = Card::get_far_neighbour(Direction::Top, board, i, j);
-                                    let top: Option<&Card> = {
-                                        if top.is_some() {
-                                            board[top.unwrap()][j].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    // fetch bottom neighbour
-                                    let bottom =
-                                        Card::get_far_neighbour(Direction::Bottom, board, i, j);
-                                    let bottom: Option<&Card> = {
-                                        if bottom.is_some() {
-                                            board[bottom.unwrap()][j].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    // fetch right neighbour
-                                    let right =
-                                        Card::get_far_neighbour(Direction::Right, board, i, j);
-                                    let right: Option<&Card> = {
-                                        if right.is_some() {
-                                            board[i][right.unwrap()].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    // fetch left neighbour
-                                    let left =
-                                        Card::get_far_neighbour(Direction::Left, board, i, j);
-                                    let left: Option<&Card> = {
-                                        if left.is_some() {
-                                            board[i][left.unwrap()].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
+                    let mut has_priority: bool = false;
 
-                                    // return true if there is a neighbour which player does not own
-                                    (top.is_some() && top.unwrap().player != player)
-                                        || (bottom.is_some() && bottom.unwrap().player != player)
-                                        || (right.is_some() && right.unwrap().player != player)
-                                        || (left.is_some() && left.unwrap().player != player)
-                                }
-                                // other units should check out cells which have cards adjacent to them
-                                _ => {
-                                    let top = {
-                                        if i > 0 {
-                                            board[i - 1][j].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    let bottom = {
-                                        if i < 3 {
-                                            board[i + 1][j].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    let right = {
-                                        if j < 4 {
-                                            board[i][j + 1].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    let left = {
-                                        if j > 0 {
-                                            board[i][j - 1].as_ref()
-                                        } else {
-                                            None
-                                        }
-                                    };
+                    if bombs[i][j] > 0 {
+                        has_priority = false;
+                    }
 
-                                    // return true if there is an adjacent neighbour which the player does not own
-                                    (top.is_some() && top.unwrap().player != player)
-                                        || (bottom.is_some() && bottom.unwrap().player != player)
-                                        || (right.is_some() && right.unwrap().player != player)
-                                        || (left.is_some() && left.unwrap().player != player)
-                                }
+                    // iterate through neighbours to set priority when there are any oppenent card neighbours for that cell
+                    for i in 0..4 {
+                        if let Some(n) = neighbours[i] {
+                            if board[n.0][n.1].as_ref().unwrap().player != player {
+                                has_priority = true;
+                                break;
                             }
                         }
-                    };
-
+                    }
+                        
                     // if move has priority, add it to the beginning of the list
                     if has_priority {
-                        moves.insert(0, (d, i, j));
+                        moves.insert(0, (d, i, j, neighbours));
                     }
                     // otherwise add it to the end of the list
                     else {
-                        moves.push((d, i, j));
+                        moves.push((d, i, j, neighbours));
                     }
                 }
             }
@@ -136,11 +60,11 @@ pub fn ai(
     deck2: &mut Vec<Card>,
     player: u8,
     bombs: &mut [[u8; 5]; 4],
-) -> (usize, usize, usize) {
+) -> (usize, usize, usize, [Option<(usize, usize)>; 4]) {
     // init best move and scores
     let mut best_move: usize;
     let mut best_score: i8;
-    let moves: Vec<(usize, usize, usize)>;
+    let moves: Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])>;
 
     if player == 1 {
         best_score = -120;
@@ -184,7 +108,7 @@ pub fn ai(
         let temp_bombs = bombs.clone();
 
         // place the card down
-        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs);
+        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs, mov.3);
 
         // maximising player
         if player == 1 {
@@ -263,7 +187,7 @@ fn minimax(
     }
 
     // get all possible moves & init score
-    let moves: Vec<(usize, usize, usize)>;
+    let moves: Vec<(usize, usize, usize, [Option<Position>; 4])>;
     let mut best_score: i8;
     if player == 1 {
         moves = available_moves(board, bombs, deck1, 1);
@@ -294,7 +218,7 @@ fn minimax(
         // make a copy of the bombs
         let temp_bombs = bombs.clone();
 
-        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs);
+        Card::place_card(board, deck1, deck2, mov.0, (mov.1, mov.2), player, bombs, mov.3);
 
         if player == 1 {
             best_score = max(
