@@ -95,7 +95,7 @@ pub fn ai(
         println!(" === Progress: {}/{}", m + 1, moves.len());
 
         // determine move
-        let mov = moves[m];
+        let mut mov = moves[m];
 
         // make a copy of the board
         let temp_board: [[Option<Card>; 5]; 4] = copy_board(&board);
@@ -120,7 +120,7 @@ pub fn ai(
             (mov.1, mov.2),
             player,
             bombs,
-            mov.3,
+            &mut mov.3,
         );
 
         // maximising player
@@ -213,7 +213,7 @@ fn minimax(
     // iterate through moves
     for m in 0..moves.len() {
         // determine move
-        let mov = moves[m];
+        let mut mov = moves[m];
 
         // make a copy of the board
         let temp_board: [[Option<Card>; 5]; 4] = copy_board(&board);
@@ -238,7 +238,7 @@ fn minimax(
             (mov.1, mov.2),
             player,
             bombs,
-            mov.3,
+            &mut mov.3,
         );
 
         if player == 1 {

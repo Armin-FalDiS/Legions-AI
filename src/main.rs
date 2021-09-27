@@ -153,7 +153,7 @@ fn main() {
         }
         // ai should play
         else if player_move.is_empty() {
-            let ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
+            let mut ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
             
             // fetch a copy of the played card
             let prev_card = {
@@ -187,7 +187,7 @@ fn main() {
                 (ai_move.1, ai_move.2),
                 current_turn,
                 &mut bombs,
-                ai_move.3,
+                &mut ai_move.3,
             );
         }
         // player should move so apply player move on the board
@@ -207,7 +207,7 @@ fn main() {
             prev_state = Some((copy_board(&board), bombs.clone(), player_move.0, prev_card));
 
             // fetch neighbours of this move
-            let neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.1, card);
+            let mut neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.1, card);
 
             // if we can't place the card, prompt for move again
             if !Card::place_card(
@@ -218,7 +218,7 @@ fn main() {
                 player_move.1,
                 current_turn,
                 &mut bombs,
-                neighbours,
+                &mut neighbours,
             ) {
                 continue;
             }

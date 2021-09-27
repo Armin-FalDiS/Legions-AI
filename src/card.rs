@@ -113,11 +113,11 @@ impl Card {
         }
     }
 
-    // pulls neighbours if the exist
+    // pulls neighbours
     pub fn pull(
         board: &mut [[Option<Card>; 5]; 4],
         position: Position,
-        neighbours: [Option<Position>; 4],
+        neighbours: &mut [Option<Position>; 4],
         bombs: &mut [[u8; 5]; 4],
     ) {
         let (y, x) = position;
@@ -163,10 +163,22 @@ impl Card {
 
                 // relocate card
                 match direction {
-                    Direction::Top => board[y - 1][x] = neighbour,
-                    Direction::Right => board[y][x + 1] = neighbour,
-                    Direction::Bottom => board[y + 1][x] = neighbour,
-                    Direction::Left => board[y][x - 1] = neighbour,
+                    Direction::Top => {
+                        board[y - 1][x] = neighbour;
+                        neighbours[i] = Some((y - 1, x));
+                    }
+                    Direction::Right => {
+                        board[y][x + 1] = neighbour;
+                        neighbours[i] = Some((y, x + 1));
+                    },
+                    Direction::Bottom => {
+                        board[y + 1][x] = neighbour;
+                        neighbours[i] = Some((y + 1, x));
+                    },
+                    Direction::Left => { 
+                        board[y][x - 1] = neighbour;
+                        neighbours[i] = Some((y, x - 1));
+                    },
                 }
             }
         }
@@ -389,7 +401,7 @@ impl Card {
         mov: Position,
         player: u8,
         bombs: &mut [[u8; 5]; 4],
-        neighbours: [Option<Position>; 4],
+        neighbours: &mut [Option<Position>; 4],
     ) -> bool {
         // determine the cell on the board
         let cell = &mut board[mov.0][mov.1];
@@ -417,7 +429,7 @@ impl Card {
 
                 Card::placement(board, mov, bombs, neighbours);
 
-                Card::play(board, mov.0, mov.1, false, Some(neighbours));
+                Card::play(board, mov.0, mov.1, false, Some(*neighbours));
 
                 return true;
             }
@@ -429,7 +441,7 @@ impl Card {
         board: &mut [[Option<Card>; 5]; 4],
         position: Position,
         bombs: &mut [[u8; 5]; 4],
-        neighbours: [Option<Position>; 4],
+        neighbours: &mut [Option<Position>; 4],
     ) {
         let y = position.0;
         let x = position.1;
@@ -460,7 +472,7 @@ impl Card {
             }
             // Titan flips adjacent cards
             Unit::Titan => {
-                Card::flip(board, neighbours);
+                Card::flip(board, *neighbours);
             }
             // Others do nothing at this stage
             _ => {}
