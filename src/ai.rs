@@ -1,4 +1,9 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    io::{stdout, Write},
+    sync::mpsc::channel,
+    thread,
+};
 
 use crate::card::*;
 use crate::utility::*;
@@ -85,90 +90,105 @@ pub fn ai(
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
             0..=8 => 8,
-            9..=10 => 5,
+            9..=10 => 6,
             _ => 3,
         }
     };
 
+    // init channels for communication between threads
+    let (tx, rx) = channel();
+    
     // iterate through the moves
     for m in 0..moves.len() {
-        println!(" === Progress: {}/{}", m + 1, moves.len());
-
         // determine move
         let mut mov = moves[m];
 
         // make a copy of the board
-        let temp_board: [[Option<Card>; 5]; 4] = copy_board(&board);
+        let mut t_board: [[Option<Card>; 5]; 4] = copy_board(&board);
 
-        // save card
-        let temp_card = {
+        // make a clone of bombs
+        let mut t_bombs = bombs.clone();
+
+        // make a copy of the decks
+        let mut t_deck1: Vec<Card> = Default::default();
+        let mut t_deck2: Vec<Card> = Default::default();
+        for i in 0..deck2.len() {
+            t_deck2.push(Card::copy(&deck2[i]));
+            if i < deck1.len() {
+                t_deck1.push(Card::copy(&deck1[i]));
+            }
+        }
+
+        // spawn a thread to do the calculations
+        let sender = tx.clone();
+        thread::spawn(move || {
+            // place the card down
+            Card::place_card(
+                &mut t_board,
+                &mut t_deck1,
+                &mut t_deck2,
+                mov.0,
+                (mov.1, mov.2),
+                player,
+                &mut t_bombs,
+                &mut mov.3,
+            );
+
+            let score = minimax(
+                &mut t_board,
+                &mut t_deck1,
+                &mut t_deck2,
+                &mut t_bombs,
+                (player % 2) + 1,
+                -120,
+                120,
+                max_depth,
+            );
+
+            sender
+                .send((m, score))
+                .expect("Thread could not send info !");
+        });
+    }
+
+    // close sending channel as it is no longer needed
+    drop(tx);
+
+    print!("Progress: ");
+    flush!();
+
+    // loop through data of the recieving channel
+    for data in rx {
+        // break down sent data
+        let (mov, score) = data;
+
+        // flag to see if there was a better score
+        let better_score: bool = {
+            // maximising player
             if player == 1 {
-                Card::copy(&deck1[mov.0])
-            } else {
-                Card::copy(&deck2[mov.0])
+                score > best_score
+            }
+            // minimising player
+            else {
+                score < best_score
             }
         };
 
-        let temp_bombs = bombs.clone();
-
-        // place the card down
-        Card::place_card(
-            board,
-            deck1,
-            deck2,
-            mov.0,
-            (mov.1, mov.2),
-            player,
-            bombs,
-            &mut mov.3,
-        );
-
-        // maximising player
-        if player == 1 {
-            // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 2, -120, 120, max_depth);
-
-            if score > best_score {
-                println!(
-                    " === New HIGH score for MAX @ {}, {} with a {:?} !! It's {}",
-                    mov.1, mov.2, temp_card.name, score
-                );
-                // we found a better move
-                best_score = score;
-                best_move = m;
-            }
-
-            // put the card back
-            deck1.insert(mov.0, temp_card);
+        // if we have a better score, update best move
+        if better_score {
+            print!("*");
+            best_score = score;
+            best_move = mov;
+        } else {
+            print!("|");
         }
-        // minimizing player
-        else {
-            // calculate score for this move
-            let score = minimax(board, deck1, deck2, bombs, 1, -120, 120, max_depth);
-
-            if score < best_score {
-                println!(
-                    " === New LOW score for MIN @ {}, {} with a {:?} !! It's {}",
-                    mov.1, mov.2, temp_card.name, score
-                );
-                // we found a better move
-                best_score = score;
-                best_move = m;
-            }
-
-            // put the card back
-            deck2.insert(mov.0, temp_card);
-        }
-
-        // revert the board
-        *board = temp_board;
-
-        // revert bombs
-        *bombs = temp_bombs;
+        flush!();
     }
 
+    println!();
+
     if (player == 1 && best_score == 120) || (player == 2 && best_score == -120) {
-        println!("\n  Omae wa mou shindeiru");
+        println!("\n  Omae wa mou shindeiru\n");
     }
 
     return moves[best_move];
