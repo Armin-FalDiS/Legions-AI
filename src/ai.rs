@@ -72,17 +72,15 @@ pub fn ai(
     bombs: &mut [[u8; 5]; 4],
 ) -> (usize, usize, usize, [Option<(usize, usize)>; 4]) {
     // init best move and scores
-    let mut best_move: usize;
+    let mut best_move: usize = 0;
     let mut best_score: i8;
     let moves: Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])>;
 
     if player == 1 {
         best_score = -120;
-        best_move = 0;
         moves = available_moves(board, bombs, deck1, 1);
     } else {
         best_score = 120;
-        best_move = 0;
         moves = available_moves(board, bombs, deck2, 2);
     }
 
@@ -90,7 +88,8 @@ pub fn ai(
     let max_depth: u8 = {
         match deck1.len() + deck2.len() {
             0..=8 => 8,
-            9..=10 => 6,
+            9..=10 => 5,
+            11..=12 => 4,
             _ => 3,
         }
     };
@@ -140,8 +139,8 @@ pub fn ai(
                 &mut t_deck2,
                 &mut t_bombs,
                 (player % 2) + 1,
-                -120,
-                120,
+                -125,
+                125,
                 max_depth,
             );
 
@@ -176,9 +175,9 @@ pub fn ai(
 
         // if we have a better score, update best move
         if better_score {
-            print!("*");
             best_score = score;
             best_move = mov;
+            print!("({})", best_score);
         } else {
             print!("|");
         }
@@ -187,7 +186,7 @@ pub fn ai(
 
     println!();
 
-    if (player == 1 && best_score == 120) || (player == 2 && best_score == -120) {
+    if (player == 1 && best_score > 100) || (player == 2 && best_score < -100) {
         println!("\n  Omae wa mou shindeiru\n");
     }
 
@@ -208,9 +207,9 @@ fn minimax(
     if deck2.is_empty() {
         let (p1_score, p2_score) = calc_scores(&board);
         if p1_score > p2_score {
-            return 120;
+            return 100 + evaluation(board);
         } else {
-            return -120;
+            return -100 + evaluation(board);
         }
     }
 
