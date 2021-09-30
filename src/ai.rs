@@ -77,26 +77,29 @@ pub fn ai(
     let moves: Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])>;
 
     if player == 1 {
-        best_score = -120;
+        best_score = -125;
         moves = available_moves(board, bombs, deck1, 1);
     } else {
-        best_score = 120;
+        best_score = 125;
         moves = available_moves(board, bombs, deck2, 2);
     }
 
-    // determines maximum depth of minimax algorithm
-    let max_depth: u8 = {
+    // determines maximum depth of minimax algorithm & minimum depth at which the pruning can occur
+    let max_depth: (u8, u8) = {
         match deck1.len() + deck2.len() {
-            0..=8 => 8,
-            9..=10 => 5,
-            11..=12 => 4,
-            _ => 3,
+            1..=6 => (6, 0),
+            7 => (7, 4),
+            8 => (8, 6),
+            9..=10 => (5, 3),
+            11 => (4, 2),
+            12 => (4, 3),
+            _ => (3, 2),
         }
     };
 
     // init channels for communication between threads
     let (tx, rx) = channel();
-    
+
     // iterate through the moves
     for m in 0..moves.len() {
         // determine move
@@ -201,7 +204,7 @@ fn minimax(
     player: u8,
     mut alpha: i8,
     mut beta: i8,
-    depth: u8,
+    depth: (u8, u8),
 ) -> i8 {
     // if player 2 is out of cards, the game is over
     if deck2.is_empty() {
@@ -214,7 +217,7 @@ fn minimax(
     }
 
     // if we are out of depth, return static evaluation
-    if depth == 0 {
+    if depth.0 == 0 {
         return evaluation(board);
     }
 
@@ -263,7 +266,16 @@ fn minimax(
         if player == 1 {
             best_score = max(
                 best_score,
-                minimax(board, deck1, deck2, bombs, 2, alpha, beta, depth - 1),
+                minimax(
+                    board,
+                    deck1,
+                    deck2,
+                    bombs,
+                    2,
+                    alpha,
+                    beta,
+                    (depth.0 - 1, depth.1),
+                ),
             );
 
             // put the taken card back
@@ -273,7 +285,7 @@ fn minimax(
             // revert bombs
             *bombs = temp_bombs;
 
-            if best_score >= beta {
+            if depth.0 <= depth.1 && best_score >= beta {
                 break;
             }
 
@@ -281,7 +293,16 @@ fn minimax(
         } else {
             best_score = min(
                 best_score,
-                minimax(board, deck1, deck2, bombs, 1, alpha, beta, depth - 1),
+                minimax(
+                    board,
+                    deck1,
+                    deck2,
+                    bombs,
+                    1,
+                    alpha,
+                    beta,
+                    (depth.0 - 1, depth.1),
+                ),
             );
 
             // put the taken card back
@@ -291,7 +312,7 @@ fn minimax(
             // revert bombs
             *bombs = temp_bombs;
 
-            if best_score <= alpha {
+            if depth.0 <= depth.1 && best_score <= alpha {
                 break;
             }
 
