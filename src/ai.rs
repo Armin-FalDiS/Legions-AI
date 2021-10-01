@@ -71,11 +71,10 @@ pub fn ai(
     player: u8,
     bombs: &mut [[u8; 5]; 4],
 ) -> (usize, usize, usize, [Option<(usize, usize)>; 4]) {
-    // init best move and scores
+    // init best move, best score and available moves
     let mut best_move: usize = 0;
     let mut best_score: i8;
     let moves: Vec<(usize, usize, usize, [Option<(usize, usize)>; 4])>;
-
     if player == 1 {
         best_score = -125;
         moves = available_moves(board, bombs, deck1, 1);
@@ -108,7 +107,7 @@ pub fn ai(
         // make a copy of the board
         let mut t_board: [[Option<Card>; 5]; 4] = copy_board(&board);
 
-        // make a clone of bombs
+        // make a clone of the bombs
         let mut t_bombs = bombs.clone();
 
         // make a copy of the decks
@@ -136,6 +135,7 @@ pub fn ai(
                 &mut mov.3,
             );
 
+            // calculate opponent's best score for this move
             let score = minimax(
                 &mut t_board,
                 &mut t_deck1,
@@ -147,13 +147,14 @@ pub fn ai(
                 max_depth,
             );
 
+            // send score to main thread
             sender
                 .send((m, score))
                 .expect("Thread could not send info !");
         });
     }
 
-    // close sending channel as it is no longer needed
+    // close the sending channel as it is no longer needed
     drop(tx);
 
     print!("Progress: ");
@@ -166,11 +167,11 @@ pub fn ai(
 
         // flag to see if there was a better score
         let better_score: bool = {
-            // maximising player
+            // maximizing player
             if player == 1 {
                 score > best_score
             }
-            // minimising player
+            // minimizing player
             else {
                 score < best_score
             }
@@ -210,8 +211,10 @@ fn minimax(
     if deck2.is_empty() {
         let (p1_score, p2_score) = calc_scores(&board);
         if p1_score > p2_score {
+            // maximizing player wins
             return 100 + evaluation(board);
         } else {
+            // minimizing player wins
             return -100 + evaluation(board);
         }
     }
@@ -226,10 +229,10 @@ fn minimax(
     let mut best_score: i8;
     if player == 1 {
         moves = available_moves(board, bombs, deck1, 1);
-        best_score = -120;
+        best_score = -125;
     } else {
         moves = available_moves(board, bombs, deck2, 2);
-        best_score = 120;
+        best_score = 125;
     }
 
     // iterate through moves
@@ -252,6 +255,7 @@ fn minimax(
         // make a copy of the bombs
         let temp_bombs = bombs.clone();
 
+        // place the card
         Card::place_card(
             board,
             deck1,
@@ -263,20 +267,21 @@ fn minimax(
             &mut mov.3,
         );
 
+        // calculate opponent's best score for this move
+        let score = minimax(
+            board,
+            deck1,
+            deck2,
+            bombs,
+            (player % 2) + 1,
+            alpha,
+            beta,
+            (depth.0 - 1, depth.1),
+        );
+
         if player == 1 {
-            best_score = max(
-                best_score,
-                minimax(
-                    board,
-                    deck1,
-                    deck2,
-                    bombs,
-                    2,
-                    alpha,
-                    beta,
-                    (depth.0 - 1, depth.1),
-                ),
-            );
+            // calculate maxmizing player's best score
+            best_score = max(best_score, score);
 
             // put the taken card back
             deck1.insert(mov.0, temp_card);
@@ -285,25 +290,16 @@ fn minimax(
             // revert bombs
             *bombs = temp_bombs;
 
+            // update the best score achieved by the maximizing player
+            alpha = max(alpha, best_score);
+
+            // if we are deeper than the allowed pruning depth, prune if applicable
             if depth.0 <= depth.1 && best_score >= beta {
                 break;
             }
-
-            alpha = max(alpha, best_score);
         } else {
-            best_score = min(
-                best_score,
-                minimax(
-                    board,
-                    deck1,
-                    deck2,
-                    bombs,
-                    1,
-                    alpha,
-                    beta,
-                    (depth.0 - 1, depth.1),
-                ),
-            );
+            // calculate minimizing player's best score
+            best_score = min(best_score, score);
 
             // put the taken card back
             deck2.insert(mov.0, temp_card);
@@ -312,11 +308,13 @@ fn minimax(
             // revert bombs
             *bombs = temp_bombs;
 
+            // update the best score achieved by the minimizing player
+            beta = min(beta, best_score);
+
+            // if we are deeper than the allowed pruning depth, prune if applicable
             if depth.0 <= depth.1 && best_score <= alpha {
                 break;
             }
-
-            beta = min(beta, best_score);
         }
     }
 
