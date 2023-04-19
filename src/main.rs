@@ -79,7 +79,10 @@ fn main() {
     let mut turn: u8 = 0;
 
     // keep track of last move (board, bombs, card_ind, card)
-    let mut prev_state: Option<([[Option<Card>; 5]; 4], [[u8; 5]; 4], usize, Card)> = Default::default();
+    let mut prev_state: Option<([[Option<Card>; 5]; 4], [[u8; 5]; 4], usize, Card)> =
+        Default::default();
+
+    println!("** Board is shown as (y,x) and the number of bombs that the cell holds **");
 
     // start of the game
     loop {
@@ -123,7 +126,10 @@ fn main() {
         let current_turn = (turn % 2) + 1;
 
         // prompt move input
-        print!("It's Player#{}'s turn. Choose Card & Place: ", current_turn);
+        print!(
+            "It's Player#{}'s turn. Choose Card & Place (CardIndexYX e.g. 111): ",
+            current_turn
+        );
         flush!();
 
         // take move input
@@ -142,7 +148,7 @@ fn main() {
                 if current_turn == 2 {
                     deck1.insert(state.2, state.3);
                 }
-                // previous turn was player2's 
+                // previous turn was player2's
                 else {
                     deck2.insert(state.2, state.3);
                 }
@@ -154,7 +160,7 @@ fn main() {
         // ai should play
         else if player_move.is_empty() {
             let mut ai_move = ai(&mut board, &mut deck1, &mut deck2, current_turn, &mut bombs);
-            
+
             // fetch a copy of the played card
             let prev_card = {
                 if current_turn == 1 {
@@ -207,7 +213,8 @@ fn main() {
             prev_state = Some((copy_board(&board), bombs.clone(), player_move.0, prev_card));
 
             // fetch neighbours of this move
-            let mut neighbours = Card::get_neighbours(&board, player_move.1.0, player_move.1.1, card);
+            let mut neighbours =
+                Card::get_neighbours(&board, player_move.1 .0, player_move.1 .1, card);
 
             // if we can't place the card, prompt for move again
             if !Card::place_card(

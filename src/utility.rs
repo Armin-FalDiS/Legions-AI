@@ -66,7 +66,7 @@ pub fn show_board(board: &[[Option<Card>; 5]; 4], bombs: &[[u8; 5]; 4]) {
         for j in 0..5 {
             match &board[i][j] {
                 None => {
-                    print!("____{}____", bombs[i][j]);
+                    print!("({},{})__{}_", i + 1, j + 1, bombs[i][j]);
                 }
                 Some(card) => {
                     if card.name == Unit::Swarm {
@@ -87,9 +87,10 @@ pub fn show_board(board: &[[Option<Card>; 5]; 4], bombs: &[[u8; 5]; 4]) {
                     }
                 }
             }
-            print!("\t\t\t\t");
+            print!("\t\t");
             flush!();
         }
+        println!();
         println!();
         flush!();
     }

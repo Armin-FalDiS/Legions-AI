@@ -170,15 +170,15 @@ impl Card {
                     Direction::Right => {
                         board[y][x + 1] = neighbour;
                         neighbours[i] = Some((y, x + 1));
-                    },
+                    }
                     Direction::Bottom => {
                         board[y + 1][x] = neighbour;
                         neighbours[i] = Some((y + 1, x));
-                    },
-                    Direction::Left => { 
+                    }
+                    Direction::Left => {
                         board[y][x - 1] = neighbour;
                         neighbours[i] = Some((y, x - 1));
-                    },
+                    }
                 }
             }
         }
@@ -642,7 +642,7 @@ impl Card {
                 // it's a tie
                 return FightResult::Tie;
             } else {
-                // attacker hos lost the battle
+                // attacker has lost the battle
                 return FightResult::Lose;
             }
         }
@@ -673,7 +673,11 @@ impl Card {
             match result {
                 FightResult::Win => {
                     // capture neighbour when the battle is won
-                    capture_event(neighbour_position, position, board, combo);
+                    let captured = capture_event(neighbour_position, position, board, combo);
+
+                    if !captured {
+                        return;
+                    }
 
                     let (y, x) = position;
                     let (ny, nx) = neighbour_position;
@@ -730,7 +734,7 @@ impl Card {
             attacker_position: Position,
             board: &mut [[Option<Card>; 5]; 4],
             combo: bool,
-        ) {
+        ) -> bool {
             // determine the attacking player
             let attacking_player = board[attacker_position.0][attacker_position.1]
                 .as_ref()
@@ -742,22 +746,23 @@ impl Card {
                 .as_ref()
                 .unwrap()
                 .player
-                != attacking_player
+                == attacking_player
             {
-                let defender = board[defender_position.0][defender_position.1]
-                    .as_mut()
-                    .unwrap();
-                // change owner of the captured card
-                defender.player = attacking_player;
-                // Ravager gets an upgrade upon being captured
-                if defender.name == Unit::Ravager {
-                    defender.upgrade(1);
-                }
+                return false;
+            }
+            let defender = board[defender_position.0][defender_position.1]
+                .as_mut()
+                .unwrap();
+            // change owner of the captured card
+            defender.player = attacking_player;
+            // Ravager gets an upgrade upon being captured
+            if defender.name == Unit::Ravager {
+                defender.upgrade(1);
+            }
 
-                // if this card was captures through Same mechanic, it gets played by it's new owner
-                if combo {
-                    Card::play(board, defender_position.0, defender_position.1, combo, None);
-                }
+            // if this card was captured through the "Same" mechanic, it gets played by it's new owner
+            if combo {
+                Card::play(board, defender_position.0, defender_position.1, combo, None);
             }
 
             // update attacker
@@ -768,6 +773,8 @@ impl Card {
             if attacker.name == Unit::Ravager {
                 attacker.upgrade(1);
             }
+
+            true
         }
 
         // fetch neighbours
